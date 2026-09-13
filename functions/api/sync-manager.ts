@@ -1,8 +1,8 @@
 // Cloudflare Pages Function: /api/sync-manager
 // Processes MultiServer sync events from MultiServer Manager into Firestore
 
-const FIRESTORE_PROJECT_ID = "gen-lang-client-0419969788";
-const FIRESTORE_DATABASE_ID = "ai-studio-remixyoru-a104dab9-25b8-47f5-87dc-4ee5ad263997";
+const FIRESTORE_PROJECT_ID = "yuro-live";
+const FIRESTORE_DATABASE_ID = "(default)";
 const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents`;
 
 function corsHeaders() {

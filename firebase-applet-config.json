@@ -1,12 +1,13 @@
 {
-  "projectId": "gen-lang-client-0419969788",
-  "appId": "1:812373472692:web:4c0381c37f95ac1d612ee1",
-  "apiKey": "AIzaSyCSctT9N4SoxwEFVtCS5oclR7H_bGsHhPQ",
-  "authDomain": "gen-lang-client-0419969788.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-remixyoru-a104dab9-25b8-47f5-87dc-4ee5ad263997",
-  "storageBucket": "gen-lang-client-0419969788.firebasestorage.app",
-  "messagingSenderId": "812373472692",
-  "measurementId": "",
-  "oAuthClientId": "812373472692-k481naqq5a1p8m65018gtvnnspoco34h.apps.googleusercontent.com",
+  "projectId": "yuro-live",
+  "appId": "1:907964173677:web:5b701af913ecdb8e221e64",
+  "apiKey": "AIzaSyC8uJw5pSdOFvPX0MCBQhBZt12HAL1_0bg",
+  "authDomain": "yuro-live.firebaseapp.com",
+  "databaseURL": "https://yuro-live-default-rtdb.asia-southeast1.firebasedatabase.app",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "yuro-live.firebasestorage.app",
+  "messagingSenderId": "907964173677",
+  "measurementId": "G-Z2DWP302PR",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

@@ -332,6 +332,13 @@ export async function runAnikotoRecentSync(options?: {
         // Create episode documents
         for (const ep of episodesFromApi) {
           const servers: ServerLink[] = [];
+          if (item.ani_id) {
+            servers.push({
+              serverName: 'YUME',
+              serverType: 'multi',
+              embedLink: `https://yumestream.pages.dev/${item.ani_id}/${ep.number}`
+            });
+          }
           if (ep.embed_url?.sub) {
             servers.push({
               serverName: 'VidStream-2',
@@ -438,6 +445,14 @@ export async function runAnikotoRecentSync(options?: {
           if (!existingEp) {
             // New episode that didn't exist before!
             const servers: ServerLink[] = [];
+            const animeIdTarget = matchedAnime.aniListId || matchedAnime.malId;
+            if (animeIdTarget) {
+              servers.push({
+                serverName: 'YUME',
+                serverType: 'multi',
+                embedLink: `https://yumestream.pages.dev/${animeIdTarget}/${ep.number}`
+              });
+            }
             if (ep.embed_url?.sub) {
               servers.push({
                 serverName: 'VidStream-2',

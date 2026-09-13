@@ -20,6 +20,7 @@ export interface MultiServerSyncSettings {
   lastSyncTimestamp: number;
   lastSyncStatus: 'idle' | 'running' | 'success' | 'error';
   lastSyncMessage: string;
+  yume_last_sync_cursor?: number;
   lastSyncStats?: MultiServerSyncStats;
 }
 
@@ -824,3 +825,20 @@ export async function syncSingleMultiServerAnime(
     onLog
   });
 }
+
+// Re-export Authoritative YUME Incremental Sync Engine
+export {
+  runYumeIncrementalSync,
+  getYumeSyncSettings,
+  saveYumeSyncSettings,
+  getYumeSyncCursor,
+  setYumeSyncCursor,
+  resetYumeSyncCursor,
+  checkYumeSyncStatus,
+  fetchYumeRecentUpdates,
+  fetchYumeCatalog,
+  fetchYumeAnimeById,
+  buildYumeEmbedUrl,
+  mergeAuthoritativeYumeServer
+} from './yumeSyncService';
+

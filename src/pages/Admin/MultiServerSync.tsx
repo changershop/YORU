@@ -30,6 +30,8 @@ import {
   runMultiServerSetSync,
   scanMultiServerComparison,
   syncSingleMultiServerAnime,
+  runYumeIncrementalSync,
+  resetYumeSyncCursor,
   MultiServerSyncSettings,
   MultiServerSyncStats,
   AnimeComparisonResult,
@@ -162,6 +164,49 @@ export const MultiServerSync: React.FC = () => {
     addLog('Requesting sync to stop...', 'warning');
   };
 
+  const handleRunIncrementalSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    stopSignalRef.current = false;
+    addLog('>>> Starting Authoritative YUME Incremental Sync (Zero Redundancy Engine) <<<', 'info');
+
+    try {
+      const res = await runYumeIncrementalSync({
+        onLog: (msg, type) => addLog(msg, type),
+        onProgress: (current, total, title) => {
+          setProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) });
+        },
+        stopSignalRef
+      });
+
+      if (res.success) {
+        addLog(`=== ${res.message} ===`, 'success');
+      } else {
+        addLog(`=== Sync issue: ${res.message} ===`, 'error');
+      }
+
+      const updatedSettings = await getMultiServerSyncSettings();
+      setSettings(updatedSettings);
+      await runScan();
+    } catch (err: any) {
+      addLog(`Unexpected sync failure: ${err.message}`, 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleResetCursor = async () => {
+    if (!window.confirm('Reset the YUME sync cursor to 0? The next incremental sync will evaluate recent updates from the beginning.')) return;
+    try {
+      await resetYumeSyncCursor();
+      const updated = await getMultiServerSyncSettings();
+      setSettings(updated);
+      addLog('YUME sync cursor successfully reset to 0.', 'warning');
+    } catch (err: any) {
+      addLog(`Failed to reset cursor: ${err.message}`, 'error');
+    }
+  };
+
   const handleSyncSingle = async (animeId: string, title: string) => {
     if (syncingSingleId || isSyncing) return;
     setSyncingSingleId(animeId);
@@ -256,6 +301,18 @@ export const MultiServerSync: React.FC = () => {
             {isScanning ? 'Scanning...' : 'Scan / Refresh'}
           </Button>
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetCursor}
+            disabled={isScanning || isSyncing}
+            className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+            title="Reset cursor to 0 for a complete re-scan"
+          >
+            <RotateCw className="w-3.5 h-3.5 mr-1.5" />
+            Reset Cursor
+          </Button>
+
           {isSyncing ? (
             <Button
               variant="destructive"
@@ -267,17 +324,60 @@ export const MultiServerSync: React.FC = () => {
               Stop Sync
             </Button>
           ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => handleStartSync('all')}
-              disabled={isScanning}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-lg shadow-indigo-600/25"
-            >
-              <Play className="w-4 h-4 mr-2 fill-current" />
-              Sync All (Unlimited)
-            </Button>
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleRunIncrementalSync}
+                disabled={isScanning}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-lg shadow-emerald-600/25 border border-emerald-500/40"
+              >
+                <Zap className="w-4 h-4 mr-2 fill-current" />
+                Fast Incremental Sync
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleStartSync('all')}
+                disabled={isScanning}
+                className="border-indigo-500/40 bg-indigo-950/30 hover:bg-indigo-900/40 text-indigo-200 font-medium"
+              >
+                <Play className="w-4 h-4 mr-2 fill-current" />
+                Full Sync (Set API)
+              </Button>
+            </>
           )}
+        </div>
+      </div>
+
+      {/* Authoritative YUME Engine Status Card */}
+      <div className="bg-gradient-to-r from-emerald-950/30 via-indigo-950/30 to-purple-950/20 border border-emerald-500/30 p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+            <Zap className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-white">Authoritative YUME Incremental Engine</span>
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Zero Redundancy
+              </span>
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              YUME is the authoritative source for episode names, numbers, audio, and player embeds.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap text-xs">
+          <div className="bg-black/40 border border-zinc-700/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-zinc-400" />
+            <span className="text-zinc-400">Sync Cursor:</span>
+            <span className="font-mono text-emerald-400 font-medium">
+              {settings.yume_last_sync_cursor ? `${settings.yume_last_sync_cursor} (${new Date(settings.yume_last_sync_cursor * 1000).toLocaleTimeString()})` : '0 (Initial)'}
+            </span>
+          </div>
         </div>
       </div>
 

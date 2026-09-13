@@ -5,6 +5,13 @@ import { createServer as createViteServer } from "vite";
 import { handleEmbedSync, verifySecretKey } from "./src/lib/syncService";
 import { runAnikotoRecentSync, getAnikotoSyncSettings, saveAnikotoSyncSettings } from "./src/lib/anikotoSyncService";
 import { fetchMultiServerDataset } from "./src/lib/multiServerService";
+import {
+  runYumeIncrementalSync,
+  getYumeSyncSettings,
+  saveYumeSyncSettings,
+  resetYumeSyncCursor,
+  checkYumeSyncStatus
+} from "./src/lib/yumeSyncService";
 
 async function startServer() {
   const app = express();
@@ -348,6 +355,137 @@ async function startServer() {
       isAnikotoSyncing = false;
     }
   });
+
+  // ==========================================
+  // YUME Authoritative Sync Engine Backend APIs
+  // ==========================================
+  let isYumeSyncing = false;
+
+  // Heartbeat / Status
+  app.get("/api/yume/status", async (req, res) => {
+    try {
+      const [settings, heartbeat] = await Promise.all([
+        getYumeSyncSettings(),
+        checkYumeSyncStatus()
+      ]);
+      return res.json({
+        success: true,
+        isSyncInProgress: isYumeSyncing,
+        heartbeat,
+        settings
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Direct Heartbeat Endpoint as requested in spec: GET <YUME_API_URL>/api/v1/sync/status
+  app.get("/api/v1/sync/status", async (req, res) => {
+    try {
+      const heartbeat = await checkYumeSyncStatus();
+      return res.json({
+        status: heartbeat.alive ? "ok" : "degraded",
+        service: "YUME Sync Engine",
+        authoritative: true,
+        ...heartbeat.data
+      });
+    } catch (err: any) {
+      return res.status(500).json({ status: "error", error: err.message });
+    }
+  });
+
+  // Settings
+  app.get("/api/yume/settings", async (req, res) => {
+    try {
+      const settings = await getYumeSyncSettings();
+      return res.json({ success: true, settings });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/yume/settings", async (req, res) => {
+    try {
+      const { autoSyncEnabled, intervalMinutes, yume_last_sync_cursor } = req.body;
+      const updateData: any = {};
+      if (typeof autoSyncEnabled === 'boolean') updateData.autoSyncEnabled = autoSyncEnabled;
+      if (typeof intervalMinutes === 'number') updateData.intervalMinutes = intervalMinutes;
+      if (typeof yume_last_sync_cursor === 'number') updateData.yume_last_sync_cursor = yume_last_sync_cursor;
+
+      await saveYumeSyncSettings(updateData);
+      const settings = await getYumeSyncSettings();
+      return res.json({ success: true, settings });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Reset Cursor
+  app.post("/api/yume/reset-cursor", async (req, res) => {
+    try {
+      await resetYumeSyncCursor();
+      const settings = await getYumeSyncSettings();
+      return res.json({ success: true, message: "Cursor reset to 0", cursor: settings.yume_last_sync_cursor });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Manual or Triggered Incremental Sync
+  app.post("/api/yume/sync-now", async (req, res) => {
+    if (isYumeSyncing) {
+      return res.status(409).json({
+        success: false,
+        message: "A YUME sync process is currently running. Please wait for completion."
+      });
+    }
+
+    try {
+      isYumeSyncing = true;
+      const forceFull = Boolean(req.body?.forceFull || req.query.forceFull === 'true');
+      const since = req.body?.since !== undefined ? Number(req.body.since) : undefined;
+      console.log(`[YUME Sync] Triggering sync (forceFull: ${forceFull}, since: ${since ?? 'stored cursor'})...`);
+
+      const result = await runYumeIncrementalSync({
+        forceFull,
+        since,
+        onLog: (msg, type) => console.log(`[YUME Sync ${type.toUpperCase()}] ${msg}`)
+      });
+
+      return res.json(result);
+    } catch (err: any) {
+      console.error("[YUME Sync] Execution Error:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    } finally {
+      isYumeSyncing = false;
+    }
+  });
+
+  // Periodic Automated Sync Engine for YUME
+  setInterval(async () => {
+    if (isYumeSyncing) return;
+    try {
+      const settings = await getYumeSyncSettings();
+      if (!settings.autoSyncEnabled) return;
+
+      const intervalMs = (settings.intervalMinutes || 60) * 60 * 1000;
+      const timeSinceLastSync = Date.now() - (settings.lastSyncTimestamp || 0);
+
+      if (timeSinceLastSync >= intervalMs) {
+        console.log(`[YUME Automated Background Sync] Running scheduled sync (Interval: ${settings.intervalMinutes}m)...`);
+        isYumeSyncing = true;
+        try {
+          await runYumeIncrementalSync({
+            onLog: (msg, type) => console.log(`[Auto YUME Sync ${type}] ${msg}`)
+          });
+        } finally {
+          isYumeSyncing = false;
+        }
+      }
+    } catch (err) {
+      console.error("[YUME Auto Sync Scheduler Error]:", err);
+    }
+  }, 60 * 1000); // Check every minute
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

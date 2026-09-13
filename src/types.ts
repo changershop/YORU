@@ -271,3 +271,61 @@ export interface SpotlightSlide {
   updatedAt?: number;
 }
 
+// ==========================================
+// YUME Authoritative Sync Engine Types
+// ==========================================
+export interface YumeRecentItem {
+  group_id: string;
+  group_title: string;
+  anime_id: string;
+  title: string;
+  season: string;
+  anilist_id: number | null;
+  mal_id: number | null;
+  latest_episode_number: number;
+  latest_episode_name: string;
+  latest_episode_title: string;
+  latest_episode_id: string;
+  total_episodes_available: number;
+  available_episodes: number[];
+  status: string;
+  format: string;
+  embed_url: string; // Embed player URL formatted with AniList ID
+  embed_mal_url?: string; // Embed player URL formatted with MAL ID (if mal_id exists)
+  cover_image: string; // Optimized CDN-cached image URL
+  banner_image: string;
+  updated_at: number; // Unix timestamp in seconds
+}
+
+export interface YumeSyncResponse {
+  sync_cursor?: number;
+  recent?: YumeRecentItem[];
+  items?: YumeRecentItem[];
+  data?: YumeRecentItem[];
+  skipped?: number;
+  total?: number;
+  count?: number;
+  timestamp?: number;
+}
+
+export interface YumeSyncStats {
+  totalChecked: number;
+  newAnimeAdded: number;
+  existingAnimeUpdated: number;
+  episodesAdded: number;
+  episodesUpdated: number;
+  episodesSkipped: number;
+  durationMs: number;
+  skippedByCursor: number;
+}
+
+export interface YumeSyncSettings {
+  autoSyncEnabled: boolean;
+  intervalMinutes: number;
+  lastSyncTimestamp: number;
+  lastSyncStatus: 'idle' | 'running' | 'success' | 'error';
+  lastSyncMessage: string;
+  yume_last_sync_cursor: number; // Unix timestamp in seconds
+  lastSyncStats?: YumeSyncStats;
+}
+

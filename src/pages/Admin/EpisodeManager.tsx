@@ -260,8 +260,8 @@ export const EpisodeManager = () => {
         if (i <= endEpDub && !ep.servers.some(s => s.serverName === 'HD-1' && s.serverType === 'dub')) {
           ep.servers.push({ serverName: 'HD-1', embedLink: `https://megaplay.buzz/stream/ani/${anilistId}/${i}/dub`, serverType: 'dub' });
         }
-        if (i <= endEpMulti && !ep.servers.some(s => s.serverName === 'Multi' && s.serverType === 'multi')) {
-          ep.servers.push({ serverName: 'Multi', embedLink: `https://multiserver.pages.dev/${anilistId}/${i}`, serverType: 'multi' });
+        if (i <= endEpMulti && !ep.servers.some(s => (s.serverName === 'YUME' || s.serverName === 'Multi') && s.serverType === 'multi')) {
+          ep.servers.push({ serverName: 'YUME', embedLink: `https://yumestream.pages.dev/${anilistId}/${i}`, serverType: 'multi' });
         }
       }
       if (malId) {
@@ -657,7 +657,7 @@ export const EpisodeManager = () => {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-widest text-yoru-text-muted">End Ep (Multi)</label>
+                <label className="text-xs font-bold uppercase tracking-widest text-yoru-text-muted">End Ep (YUME Multi)</label>
                 <input 
                   type="number" 
                   value={autoAddConfig.endEpMulti} 

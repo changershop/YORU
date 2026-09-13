@@ -8,8 +8,8 @@ export interface MultiServerSyncEvent {
   action?: 'add_episode' | 'update_episode' | 'delete_episode' | 'delete_server' | 'sync_episode' | 'sync_all' | 'full_dump';
   anilistId: number | string;
   episodeNumber?: number;
-  embedUrl?: string; // Must default to https://multiserver.pages.dev/{anilistId}/{episodeNumber}
-  serverName?: string; // Default: 'MultiServer'
+  embedUrl?: string; // Must default to https://yumestream.pages.dev/{anilistId}/{episodeNumber}
+  serverName?: string; // Default: 'YUME'
   serverType?: 'multi' | 'sub' | 'dub'; // Default: 'multi'
   customTitle?: string;
   timestamp?: number;
@@ -137,7 +137,7 @@ export const verifySecretKey = (key?: string): boolean => {
 };
 
 export const buildMultiServerEmbedUrl = (anilistId: number | string, episodeNumber: number | string): string => {
-  return `https://multiserver.pages.dev/${anilistId}/${episodeNumber}`;
+  return `https://yumestream.pages.dev/${anilistId}/${episodeNumber}`;
 };
 
 export const fetchAniListMetadata = async (id: number) => {
@@ -218,7 +218,10 @@ export const isMultiServerEntry = (server: ServerLink): boolean => {
   const link = (server.embedLink || '').toLowerCase().trim();
   return (
     server.serverType === 'multi' ||
+    name === 'yume' ||
     name === 'multiserver' ||
+    name === 'multi' ||
+    link.includes('yumestream.pages.dev') ||
     link.includes('multiserver.pages.dev')
   );
 };
@@ -248,7 +251,7 @@ export async function handleMultiServerSync(event: MultiServerSyncEvent): Promis
 
   const targetEpNum = event.episodeNumber ? Number(event.episodeNumber) : 1;
   const action = event.action || 'sync_episode';
-  const serverName = event.serverName?.trim() || 'MultiServer';
+  const serverName = event.serverName?.trim() || 'YUME';
   const serverType = event.serverType || 'multi';
   const embedUrl = event.embedUrl?.trim() || buildMultiServerEmbedUrl(aniIdNum, targetEpNum);
 
@@ -326,7 +329,7 @@ export async function handleMultiServerSync(event: MultiServerSyncEvent): Promis
       const epServers: ServerLink[] = [
         { serverName: 'HD-1', serverType: 'sub', embedLink: `https://megaplay.buzz/stream/ani/${aniIdNum}/${epNum}/sub` },
         { serverName: 'HD-1', serverType: 'dub', embedLink: `https://megaplay.buzz/stream/ani/${aniIdNum}/${epNum}/dub` },
-        { serverName: 'Multi', serverType: 'multi', embedLink: `https://multiserver.pages.dev/${aniIdNum}/${epNum}` }
+        { serverName: 'YUME', serverType: 'multi', embedLink: `https://yumestream.pages.dev/${aniIdNum}/${epNum}` }
       ];
 
       if (meta.idMal) {

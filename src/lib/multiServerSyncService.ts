@@ -241,9 +241,10 @@ export async function scanMultiServerComparison(
         localEpMap.set(ep.episodeNumber, ep);
         const hasMulti = ep.servers?.some(s =>
           s.serverType === 'multi' ||
+          s.serverName === 'YUME' ||
           s.serverName === 'Multi' ||
           s.serverName === 'MultiServer' ||
-          (s.embedLink && s.embedLink.includes('multiserver.pages.dev'))
+          (s.embedLink && (s.embedLink.includes('yumestream.pages.dev') || s.embedLink.includes('multiserver.pages.dev')))
         );
         if (hasMulti) localMultiCount++;
       });
@@ -258,9 +259,10 @@ export async function scanMultiServerComparison(
         } else {
           const hasMulti = localEp.servers?.some(s =>
             s.serverType === 'multi' ||
+            s.serverName === 'YUME' ||
             s.serverName === 'Multi' ||
             s.serverName === 'MultiServer' ||
-            (s.embedLink && s.embedLink.includes('multiserver.pages.dev'))
+            (s.embedLink && (s.embedLink.includes('yumestream.pages.dev') || s.embedLink.includes('multiserver.pages.dev')))
           );
           if (!hasMulti) {
             episodesNeedingMultiServer.push(epNum);
@@ -342,7 +344,7 @@ export async function runMultiServerSetSync(options: SyncOptions = {}): Promise<
   };
 
   try {
-    addLog(`Initiating connection to https://multiserver.pages.dev/set...`, 'info');
+    addLog(`Initiating connection to https://yumestream.pages.dev/set...`, 'info');
     await saveMultiServerSyncSettings({ lastSyncStatus: 'running', lastSyncMessage: 'Syncing in progress...' });
 
     const { rawItems } = await fetchMultiServerRawDataset();
@@ -493,11 +495,11 @@ export async function runMultiServerSetSync(options: SyncOptions = {}): Promise<
           }
         }
 
-        // 3. Multi Server
+        // 3. YUME Multi Server
         srvs.push({
-          serverName: 'Multi',
+          serverName: 'YUME',
           serverType: 'multi',
-          embedLink: `https://multiserver.pages.dev/${anilistOrId}/${epNum}`
+          embedLink: `https://yumestream.pages.dev/${anilistOrId}/${epNum}`
         });
 
         return srvs;
@@ -637,9 +639,10 @@ export async function runMultiServerSetSync(options: SyncOptions = {}): Promise<
           existingEpMap.set(ep.episodeNumber, ep);
           const hasMulti = ep.servers?.some(s =>
             s.serverType === 'multi' ||
+            s.serverName === 'YUME' ||
             s.serverName === 'Multi' ||
             s.serverName === 'MultiServer' ||
-            (s.embedLink && s.embedLink.includes('multiserver.pages.dev'))
+            (s.embedLink && (s.embedLink.includes('yumestream.pages.dev') || s.embedLink.includes('multiserver.pages.dev')))
           );
           if (hasMulti) existingMultiCount++;
         }

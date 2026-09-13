@@ -77,22 +77,27 @@ export function normalizeBaseDomain(input: string): string {
 }
 
 /**
- * Dynamically rewrites AnimeSalt/Abyss server embed URLs on the fly if dynamic override is enabled.
+ * Dynamically rewrites AnimeSalt/Abyss and YUME/MultiServer embed URLs on the fly.
  */
 export function applyDynamicDomainOverride(
   embedLink: string,
   config?: ServerConfig | null
 ): string {
   if (!embedLink || typeof embedLink !== 'string') return embedLink;
-  const conf = config || cachedConfig;
-  if (!conf || !conf.dynamicOverrideEnabled || !conf.abyssBaseDomain) {
-    return embedLink;
+
+  let trimmed = embedLink.trim();
+
+  // MultiServer -> YUME Stream migration (https://yumestream.pages.dev/{id}/{episode})
+  if (trimmed.includes('multiserver.pages.dev')) {
+    trimmed = trimmed.replace(/https?:\/\/multiserver\.pages\.dev/g, 'https://yumestream.pages.dev');
   }
 
-  const cleanTargetBase = normalizeBaseDomain(conf.abyssBaseDomain);
-  if (!cleanTargetBase) return embedLink;
+  const conf = config || cachedConfig;
+  if (!conf || !conf.dynamicOverrideEnabled || !conf.abyssBaseDomain) {
+    return trimmed;
+  }
 
-  const trimmed = embedLink.trim();
+  const cleanTargetBase = conf.abyssBaseDomain.replace(/\/+$/, '');
 
   // Check if link is an Abyss/AnimeSalt/multi-lang-plyr link
   const isAbyssLink =

@@ -78,8 +78,8 @@ export async function onRequestPost({ request, env }: any) {
     const action = payload.action || payload.event || "update_episode";
     const anilistId = payload.anilistId || payload.id || payload.aniId;
     const episodeNumber = Number(payload.episodeNumber || payload.episode || 1);
-    const embedUrl = payload.embedUrl || payload.url || payload.link || `https://multiserver.pages.dev/${anilistId}/${episodeNumber}`;
-    const serverName = payload.serverName || "MultiServer";
+    const embedUrl = payload.embedUrl || payload.url || payload.link || `https://yumestream.pages.dev/${anilistId}/${episodeNumber}`;
+    const serverName = payload.serverName || "YUME";
     const serverType = payload.serverType || "multi";
 
     if (!anilistId) {
@@ -193,11 +193,11 @@ export async function onRequestPost({ request, env }: any) {
       }
     }
 
-    // Merge or delete MultiServer without touching HD-1, HD-2
+    // Merge or delete YUME/MultiServer without touching HD-1, HD-2
     const cleanServers = existingServers.filter((s: any) => {
       const name = (s.serverName || "").toLowerCase();
       const link = (s.embedLink || "").toLowerCase();
-      const isMulti = s.serverType === "multi" || name === "multiserver" || link.includes("multiserver.pages.dev");
+      const isMulti = s.serverType === "multi" || name === "yume" || name === "multi" || name === "multiserver" || link.includes("yumestream.pages.dev") || link.includes("multiserver.pages.dev");
       return !isMulti;
     });
 

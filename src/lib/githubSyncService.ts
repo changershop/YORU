@@ -119,7 +119,7 @@ export async function fetchGitHubRepoContents(
  */
 export async function syncFromGitHubData(
   jsonData: any, 
-  customDomain = 'https://multiserver.pages.dev'
+  customDomain = 'https://yumestream.pages.dev'
 ): Promise<{ total: number; synced: number; failed: number; results: any[] }> {
   const results: any[] = [];
   let total = 0;
@@ -150,7 +150,7 @@ export async function syncFromGitHubData(
           anilistId: Number(anilistId),
           episodeNumber: epNum,
           embedUrl: embedUrl,
-          serverName: item.serverName || 'MultiServer',
+          serverName: item.serverName || 'YUME',
           serverType: 'multi',
           customTitle: item.title
         });

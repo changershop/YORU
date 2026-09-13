@@ -9,6 +9,12 @@ export function autoDetectServer(link: string): { serverName: string; serverType
   let serverType: 'sub' | 'dub' | 'multi' = 'sub';
 
   if (
+    cleanLink.includes('yumestream.pages.dev') ||
+    cleanLink.includes('multiserver.pages.dev')
+  ) {
+    serverName = 'YUME';
+    serverType = 'multi';
+  } else if (
     cleanLink.includes('as-cdn21.top') || 
     cleanLink.includes('as-cdn') || 
     cleanLink.includes('vidstream')
@@ -31,6 +37,7 @@ export function autoDetectServer(link: string): { serverName: string; serverType
   } else if (
     cleanLink.includes('/multi') ||
     cleanLink.includes('multi-lang') ||
+    serverName === 'YUME' ||
     serverName === 'Abyss' ||
     serverName === 'VidStream'
   ) {
@@ -69,25 +76,35 @@ export function normalizeServer(s: any): ServerLink | null {
   } else if (serverName === 'MAL Dub') {
     serverName = 'HD-2';
     serverType = 'dub';
+  } else if (serverName === 'Multi' || serverName === 'MultiServer' || serverName.toLowerCase() === 'multiserver') {
+    serverName = 'YUME';
+    serverType = 'multi';
   }
 
   const detected = autoDetectServer(embedLink);
 
   if (!serverName) {
     serverName = detected.serverName;
+  } else if (detected.serverName === 'YUME' && serverName !== 'YUME') {
+    serverName = 'YUME';
   }
 
-  // Infer serverType if missing or if server is VidStream/Abyss (default to multi)
+  // Infer serverType if missing or if server is YUME/VidStream/Abyss (default to multi)
   if (!s.serverType) {
     serverType = detected.serverType;
-  } else if (serverName === 'VidStream' || serverName === 'Abyss' || detected.serverName === 'VidStream' || detected.serverName === 'Abyss') {
-    // If not explicitly set to dub, default to multi for VidStream and Abyss
+  } else if (serverName === 'YUME' || serverName === 'VidStream' || serverName === 'Abyss' || detected.serverName === 'YUME' || detected.serverName === 'VidStream' || detected.serverName === 'Abyss') {
+    // If not explicitly set to dub, default to multi for YUME, VidStream and Abyss
     if (s.serverType !== 'dub') {
       serverType = 'multi';
     }
   }
 
-  return { serverName, embedLink, serverType };
+  // Modernize legacy multiserver.pages.dev URL to yumestream.pages.dev
+  const finalEmbedLink = embedLink.includes('multiserver.pages.dev')
+    ? embedLink.replace(/https?:\/\/multiserver\.pages\.dev/g, 'https://yumestream.pages.dev')
+    : embedLink;
+
+  return { serverName, embedLink: finalEmbedLink, serverType };
 }
 
 /**

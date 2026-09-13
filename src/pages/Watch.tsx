@@ -615,7 +615,13 @@ export const Watch = () => {
                             const isActive = activeServerIdx === originalIdx;
                             const isMegaPlay = /megaplay/i.test(serverEp.serverName || '') || 
                                                /megaplay\.buzz/i.test(serverEp.embedLink || '');
-                            const displayName = isMegaPlay ? 'VidStream-2' : (serverEp.serverName || `Server ${originalIdx + 1}`);
+                            const isYume = /yume/i.test(serverEp.serverName || '') ||
+                                           /yumestream\.pages\.dev/i.test(serverEp.embedLink || '') ||
+                                           /multiserver/i.test(serverEp.serverName || '') ||
+                                           /multiserver\.pages\.dev/i.test(serverEp.embedLink || '') ||
+                                           serverEp.serverName === 'Multi' ||
+                                           (serverEp.serverType === 'multi' && !/abyss|vidstream/i.test(serverEp.serverName || ''));
+                            const displayName = isMegaPlay ? 'VidStream-2' : isYume ? 'YUME' : (serverEp.serverName || `Server ${originalIdx + 1}`);
 
                             return (
                               <button

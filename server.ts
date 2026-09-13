@@ -163,8 +163,8 @@ async function startServer() {
     res.json({
       status: "online",
       endpoint: "/api/sync-manager",
-      supportedServers: ["MultiServer", "HD-1", "HD-2"],
-      format: "{Domain}/{anilistId}/{episodeNumber}"
+      supportedServers: ["YUME", "HD-1", "HD-2"],
+      format: "https://yumestream.pages.dev/{anilist/mal id}/{episode}"
     });
   });
 
@@ -213,23 +213,33 @@ async function startServer() {
     }
   });
 
-  // Anikoto 24x Daily Auto-Sync API Routes
-  let isAnikotoSyncing = false;
-
-  app.get("/api/multiserver/proxy/*all", async (req, res) => {
+  // YUME / MultiServer Proxy API Routes
+  const handleYumeProxy = async (req: any, res: any) => {
     try {
       const allParam = (req.params as any).all;
       let targetPath = Array.isArray(allParam) ? allParam.join('/') : (allParam || req.params[0] || '');
       if (typeof targetPath === 'string' && targetPath.startsWith('/')) {
         targetPath = targetPath.substring(1);
       }
-      const targetUrl = new URL(`https://multiserver.pages.dev/api/${targetPath}`);
+      const targetUrl = new URL(`https://yumestream.pages.dev/api/${targetPath}`);
       for (const [key, value] of Object.entries(req.query)) {
         targetUrl.searchParams.append(key, String(value));
       }
-      console.log(`[MultiServer Proxy] Fetching: ${targetUrl.toString()}`);
+      console.log(`[YUME Proxy] Fetching: ${targetUrl.toString()}`);
       
-      const response = await fetch(targetUrl.toString());
+      let response: Response;
+      try {
+        response = await fetch(targetUrl.toString());
+      } catch (fetchErr) {
+        // Fallback to legacy domain if yumestream isn't responding
+        const fallbackUrl = new URL(`https://multiserver.pages.dev/api/${targetPath}`);
+        for (const [key, value] of Object.entries(req.query)) {
+          fallbackUrl.searchParams.append(key, String(value));
+        }
+        console.log(`[YUME Proxy] Fallback fetching: ${fallbackUrl.toString()}`);
+        response = await fetch(fallbackUrl.toString());
+      }
+
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
@@ -239,10 +249,13 @@ async function startServer() {
         return res.status(response.status).send(text);
       }
     } catch (err: any) {
-      console.error("[MultiServer Proxy] Error:", err);
-      res.status(500).json({ error: "MultiServer proxy failed", details: err.message });
+      console.error("[YUME Proxy] Error:", err);
+      res.status(500).json({ error: "YUME proxy failed", details: err.message });
     }
-  });
+  };
+
+  app.get("/api/yume/proxy/*all", handleYumeProxy);
+  app.get("/api/multiserver/proxy/*all", handleYumeProxy);
 
   app.get("/api/anikoto/proxy/*all", async (req, res) => {
     try {
@@ -276,6 +289,9 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
+
+  // Anikoto Auto-Sync State
+  let isAnikotoSyncing = false;
 
   app.get("/api/anikoto/status", async (req, res) => {
     try {

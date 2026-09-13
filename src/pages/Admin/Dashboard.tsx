@@ -166,13 +166,13 @@ export const Dashboard = () => {
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-bold text-white">MultiServer Set Sync (multiserver.pages.dev/set)</span>
+              <span className="text-sm font-bold text-white">YUME Multi-Server Sync (yumestream.pages.dev)</span>
               <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-indigo-500/10 text-indigo-300 border-indigo-500/30">
-                Incremental Multi-Server
+                YUME Server
               </span>
             </div>
             <p className="text-xs text-yoru-text-muted mt-0.5">
-              Syncs all anime & episodes from MultiServer. Skips existing, adds new episodes, and attaches Multi server links.
+              Syncs all anime & episodes from YUME Stream. Skips existing, adds new episodes, and attaches YUME server links.
             </p>
           </div>
         </div>

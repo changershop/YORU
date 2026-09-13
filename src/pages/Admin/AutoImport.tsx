@@ -322,10 +322,11 @@ export const AutoImport = () => {
             }
           }
 
-          // Check Multi server if enabled
+          // Check YUME Multi server if enabled
           if (importMulti) {
-            servers.multi = await verifyLink(`https://multiserver.pages.dev/${aniId}/1`);
-            if (servers.multi) addLog(`✓ Multi server verified`, 'success');
+            const targetId = aniId || meta.idMal;
+            servers.multi = await verifyLink(`https://yumestream.pages.dev/${targetId}/1`);
+            if (servers.multi) addLog(`✓ YUME server verified`, 'success');
           }
         }
 
@@ -434,7 +435,10 @@ export const AutoImport = () => {
           
           if (servers.aniSub) availableServers.push({ serverName: 'HD-1', serverType: 'sub', embedLink: `https://megaplay.buzz/stream/ani/${aniId}/${epNum}/sub` });
           if (servers.aniDub) availableServers.push({ serverName: 'HD-1', serverType: 'dub', embedLink: `https://megaplay.buzz/stream/ani/${aniId}/${epNum}/dub` });
-          if (servers.multi) availableServers.push({ serverName: 'Multi', serverType: 'multi', embedLink: `https://multiserver.pages.dev/${aniId}/${epNum}` });
+          if (servers.multi) {
+            const targetId = aniId || meta.idMal;
+            availableServers.push({ serverName: 'YUME', serverType: 'multi', embedLink: `https://yumestream.pages.dev/${targetId}/${epNum}` });
+          }
           if (servers.malSub) availableServers.push({ serverName: 'HD-2', serverType: 'sub', embedLink: `https://megaplay.buzz/stream/mal/${meta.idMal}/${epNum}/sub` });
           if (servers.malDub) availableServers.push({ serverName: 'HD-2', serverType: 'dub', embedLink: `https://megaplay.buzz/stream/mal/${meta.idMal}/${epNum}/dub` });
 
@@ -600,7 +604,7 @@ export const AutoImport = () => {
               </div>
             </label>
 
-            {/* Multi Toggle */}
+            {/* Multi / YUME Toggle */}
             <label className="flex items-center gap-3 p-3 rounded-lg bg-yoru-surface border border-yoru-border/60 cursor-pointer hover:border-yoru-accent/50 transition-colors">
               <input
                 type="checkbox"
@@ -612,9 +616,9 @@ export const AutoImport = () => {
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-purple-400" />
-                  Multi Server
+                  YUME (Multi)
                 </span>
-                <span className="text-[11px] text-yoru-text-muted">MultiServer CDN</span>
+                <span className="text-[11px] text-yoru-text-muted">yumestream.pages.dev</span>
               </div>
             </label>
 

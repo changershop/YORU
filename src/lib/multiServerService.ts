@@ -119,7 +119,7 @@ function saveLocalCache(cache: MultiServerCache) {
 
 /**
  * Directly queries the MultiServer Firestore to generate the complete dataset (/set)
- * Works in any environment (Cloudflare Pages https://yoru-die.pages.dev/, Node, local browser)
+ * Works in any environment (Cloudflare Pages https://yorulive.pages.dev/, Node, local browser)
  */
 export async function fetchMultiServerRawDataset(): Promise<{ groups: MultiServerGroup[]; rawItems: MultiServerItem[] }> {
   try {
@@ -433,9 +433,9 @@ export async function fetchMultiServerDataset(forceRefresh = false): Promise<Mul
               isFiller: false,
               servers: [
                 {
-                  serverName: 'Multi',
+                  serverName: 'YUME',
                   serverType: 'multi',
-                  embedLink: `https://multiserver.pages.dev/${anilistOrId}/${epNum}`
+                  embedLink: `https://yumestream.pages.dev/${anilistOrId}/${epNum}`
                 }
               ],
               thumbnailUrl: item.cover_image || animeObj.poster,
@@ -529,7 +529,7 @@ export async function fetchMultiServerRecentEpisodes(): Promise<MultiServerRecen
           season: item.season || '1',
           latest_episode_number: latestEpNum,
           available_episodes: item.episodes_available,
-          embed_url: `https://multiserver.pages.dev/${anilistOrId}/${latestEpNum}`,
+          embed_url: `https://yumestream.pages.dev/${anilistOrId}/${latestEpNum}`,
           updated_at: Date.now()
         });
       }

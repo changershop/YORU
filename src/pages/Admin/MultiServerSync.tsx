@@ -94,13 +94,13 @@ export const MultiServerSync: React.FC = () => {
 
   const runScan = async () => {
     setIsScanning(true);
-    addLog('Scanning https://multiserver.pages.dev/set against local database...', 'info');
+    addLog('Scanning https://yumestream.pages.dev/set against local database...', 'info');
     try {
       const results = await scanMultiServerComparison((curr, tot, msg) => {
         // Optional progress during scan
       });
       setComparisonList(results);
-      addLog(`Scan completed: detected ${results.length} total anime entries on MultiServer.`, 'success');
+      addLog(`Scan completed: detected ${results.length} total anime entries on YUME MultiServer.`, 'success');
     } catch (err: any) {
       addLog(`Scan error: ${err.message}`, 'error');
     } finally {
@@ -227,17 +227,17 @@ export const MultiServerSync: React.FC = () => {
               <p className="text-xs text-yoru-muted mt-0.5 flex items-center gap-2">
                 <span>Source:</span>
                 <a 
-                  href="https://multiserver.pages.dev/set" 
+                  href="https://yumestream.pages.dev/set" 
                   target="_blank" 
                   rel="noreferrer" 
                   className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 underline underline-offset-2"
                 >
-                  https://multiserver.pages.dev/set
+                  https://yumestream.pages.dev/set
                   <ExternalLink className="w-3 h-3" />
                 </a>
                 <span className="text-zinc-600">•</span>
                 <span>Active Target:</span>
-                <span className="text-emerald-400 font-medium">yoru-die.pages.dev</span>
+                <span className="text-emerald-400 font-medium">yorulive.pages.dev</span>
               </p>
             </div>
           </div>
@@ -361,7 +361,7 @@ export const MultiServerSync: React.FC = () => {
               )}
             </div>
             <div className="text-xs text-yoru-muted">
-              Periodically checks https://multiserver.pages.dev/set for newly uploaded episodes
+              Periodically checks https://yumestream.pages.dev/set for newly uploaded episodes
             </div>
           </div>
         </div>
@@ -433,7 +433,7 @@ export const MultiServerSync: React.FC = () => {
             <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
             <span className="text-xs font-mono text-zinc-400 ml-2 flex items-center gap-1.5">
               <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-              sync-console — https://multiserver.pages.dev/set
+              sync-console — https://yumestream.pages.dev/set
             </span>
           </div>
 
@@ -609,7 +609,7 @@ export const MultiServerSync: React.FC = () => {
                       <td className="py-3 px-4 text-zinc-300">
                         <div className="font-medium text-indigo-300">{msRange}</div>
                         <div className="text-[10px] text-zinc-500 mt-0.5">
-                          Multi server embed links verified
+                          YUME server embed links verified
                         </div>
                       </td>
 
@@ -621,7 +621,7 @@ export const MultiServerSync: React.FC = () => {
                               {item.localEpCount} total eps in DB
                             </div>
                             <div className="text-[10px] text-emerald-400 mt-0.5">
-                              {item.localMultiEpCount} with Multi server
+                              {item.localMultiEpCount} with YUME server
                             </div>
                           </div>
                         ) : (
@@ -648,7 +648,7 @@ export const MultiServerSync: React.FC = () => {
                         {item.status === 'needs_multi_server' && (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/30">
                             <Zap className="w-3 h-3 text-blue-400" />
-                            Needs Multi Server Link ({item.episodesNeedingMultiServer.length})
+                            Needs YUME Server Link ({item.episodesNeedingMultiServer.length})
                           </div>
                         )}
 

@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Play, Plus, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, normalizeTitle, is18PlusAnime } from '../lib/utils';
+import { formatAiredDisplay, formatYearDisplay } from '../lib/normalizers';
 import { Button } from './ui/Button';
 import { WatchlistButton } from './WatchlistButton';
 import { useAnimeEpisodeCounts } from '../hooks/useAnimeEpisodeCounts';
@@ -149,8 +150,8 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({ anime, showTitle = true })
                   {anime.status}
                 </span>
               )}
-              {(anime.startDate?.substring(0, 4) || anime.season) && (
-                <span className="text-[11px] text-yoru-text-muted">{anime.startDate?.substring(0, 4) || anime.season}</span>
+              {(formatYearDisplay(anime)) && (
+                <span className="text-[11px] text-yoru-text-muted">{formatYearDisplay(anime)}</span>
               )}
             </div>
           </div>
@@ -228,7 +229,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({ anime, showTitle = true })
                 </p>
 
                 <div className="space-y-1 text-[11px] mt-1 text-zinc-500 border-t border-white/5 pt-2.5">
-                  <div className="flex"><span className="w-16 font-medium text-zinc-400 shrink-0">Aired:</span><span className="text-zinc-300 truncate flex-1">{(anime.startDate && anime.startDate.length > 0) ? anime.startDate.substring(0, 10) : (anime.season || 'N/A')}</span></div>
+                  <div className="flex"><span className="w-16 font-medium text-zinc-400 shrink-0">Aired:</span><span className="text-zinc-300 truncate flex-1">{formatAiredDisplay(anime)}</span></div>
                   <div className="flex"><span className="w-16 font-medium text-zinc-400 shrink-0">Status:</span><span className="text-zinc-300">{anime.status || 'Finished'}</span></div>
                   <div className="flex"><span className="w-16 font-medium text-zinc-400 shrink-0">Genres:</span><span className="text-zinc-300 truncate flex-1">{anime.genres?.slice(0,3).join(', ')}</span></div>
                 </div>

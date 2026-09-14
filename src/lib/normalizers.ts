@@ -201,6 +201,25 @@ export function formatAiredDisplay(anime: Partial<Anime> | null | undefined): st
 }
 
 /**
+ * Extracts just the year for display on cards/thumbnails
+ */
+export function formatYearDisplay(anime: Partial<Anime> | null | undefined): string {
+  if (!anime) return '';
+  if (anime.seasonYear) return String(anime.seasonYear);
+  const aired = formatAiredDisplay(anime);
+  if (aired !== '-') {
+    const yearMatch = aired.match(/\b(19\d\d|20\d\d)\b/);
+    if (yearMatch) return yearMatch[1];
+  }
+  if (anime.season && anime.season !== 'UNKNOWN' && anime.season !== '1') {
+    const match = anime.season.match(/\b(19\d\d|20\d\d)\b/);
+    if (match) return match[1];
+    return anime.season.trim();
+  }
+  return '';
+}
+
+/**
  * Normalizes a server link object.
  */
 export function normalizeServer(raw: any): ServerLink | null {

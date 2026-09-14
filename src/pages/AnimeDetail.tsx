@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { normalizeEpisodes } from '../lib/episodeUtils';
-import { formatAiredDisplay } from '../lib/normalizers';
+import { formatAiredDisplay, formatYearDisplay } from '../lib/normalizers';
 import { Anime, Episode } from '../types';
 import { getAnimeBySlug, getEpisodesForAnime } from '../lib/data';
 import { Play, Plus, Star, Calendar, Clock, Loader2, PlayCircle, Info, Hash, Monitor, Tv, Video, Activity } from 'lucide-react';
@@ -236,10 +236,10 @@ export const AnimeDetail = () => {
                     <span>{anime.averageScore}</span>
                   </span>
                 )}
-                {anime.startDate && (
+                {formatYearDisplay(anime) && (
                   <span className="px-3.5 py-1.5 rounded-lg bg-white/10 backdrop-blur-md text-white border border-white/15 flex items-center gap-1.5 font-bold shadow-sm">
                     <Calendar className="w-4 h-4 text-white/80" />
-                    <span>{anime.startDate.substring(0, 4)}</span>
+                    <span>{formatYearDisplay(anime)}</span>
                   </span>
                 )}
               </div>

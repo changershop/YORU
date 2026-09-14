@@ -3,6 +3,7 @@ import { Anime } from '../types';
 import { AnimeCard } from './AnimeCard';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
+import { formatYearDisplay } from '../lib/normalizers';
 import { useFramerDragScroll } from '../hooks/useFramerDragScroll';
 
 interface TrendingRowProps {
@@ -120,9 +121,9 @@ export const TrendingRow: React.FC<TrendingRowProps> = ({
                     <h3 className="text-[12px] md:text-sm font-semibold leading-tight line-clamp-2 text-white group-hover:text-yoru-accent transition-colors duration-300">
                       {anime.title}
                     </h3>
-                    {anime.startDate && (
+                    {formatYearDisplay(anime) && (
                       <div className="text-[11px] text-yoru-text-muted">
-                        {anime.startDate.substring(0, 4)}
+                        {formatYearDisplay(anime)}
                       </div>
                     )}
                   </div>

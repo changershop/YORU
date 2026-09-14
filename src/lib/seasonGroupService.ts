@@ -18,13 +18,25 @@ export async function syncSeasonGroup(groupId: string): Promise<LinkedSeason[]> 
   // Sort by seasonNumber ascending
   memberAnime.sort((a, b) => (a.seasonNumber || 1) - (b.seasonNumber || 1));
 
-  const linkedSeasons: LinkedSeason[] = memberAnime.map((a, idx) => ({
-    animeId: a.id,
-    seasonNumber: a.seasonNumber ?? (idx + 1),
-    seasonName: `Season ${a.seasonNumber ?? (idx + 1)}`,
-    slug: a.slug,
-    title: a.title
-  }));
+  const linkedSeasons: LinkedSeason[] = memberAnime.map((a, idx) => {
+    let name = `Season ${a.seasonNumber ?? (idx + 1)}`;
+    if (a.season && typeof a.season === 'string' && a.season.toLowerCase().includes('season')) {
+      name = a.season;
+    } else if (a.season && typeof a.season === 'string') {
+      name = a.season;
+    }
+    
+    // Clean up duplicate "Season Season"
+    name = name.replace(/Season Season/gi, 'Season');
+    
+    return {
+      animeId: a.id,
+      seasonNumber: a.seasonNumber ?? (idx + 1),
+      seasonName: name,
+      slug: a.slug,
+      title: a.title
+    };
+  });
 
   // Update all anime documents in the group with the unified linkedSeasons
   const updates = memberAnime.map(a => 

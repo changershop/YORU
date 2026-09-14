@@ -183,7 +183,14 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({ anime, showTitle = true })
                 
                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-zinc-400">
                   <span className="flex items-center gap-0.5 text-yellow-500 font-extrabold">
-                    ⭐ {anime.averageScore ? (anime.averageScore / 10).toFixed(1) : '8.5'}
+                    ⭐ {(() => {
+                      if (!anime.averageScore) return '8.5';
+                      const scoreStr = String(anime.averageScore);
+                      const parsed = parseFloat(scoreStr.replace(/[^0-9.]/g, ''));
+                      if (isNaN(parsed)) return '8.5';
+                      // If it's a percentage (e.g. 85), divide by 10 to get 8.5
+                      return scoreStr.includes('%') || parsed > 10 ? (parsed / 10).toFixed(1) : parsed.toFixed(1);
+                    })()}
                   </span>
                   {anime.format && (
                     <span className="px-1.5 py-0.5 rounded bg-white/10 text-white font-semibold text-[10px] uppercase">
@@ -221,7 +228,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({ anime, showTitle = true })
                 </p>
 
                 <div className="space-y-1 text-[11px] mt-1 text-zinc-500 border-t border-white/5 pt-2.5">
-                  <div className="flex"><span className="w-16 font-medium text-zinc-400 shrink-0">Aired:</span><span className="text-zinc-300 truncate flex-1">{anime.startDate?.substring(0,4) || 'N/A'}</span></div>
+                  <div className="flex"><span className="w-16 font-medium text-zinc-400 shrink-0">Aired:</span><span className="text-zinc-300 truncate flex-1">{(anime.startDate && anime.startDate.length > 0) ? anime.startDate.substring(0, 10) : (anime.season || 'N/A')}</span></div>
                   <div className="flex"><span className="w-16 font-medium text-zinc-400 shrink-0">Status:</span><span className="text-zinc-300">{anime.status || 'Finished'}</span></div>
                   <div className="flex"><span className="w-16 font-medium text-zinc-400 shrink-0">Genres:</span><span className="text-zinc-300 truncate flex-1">{anime.genres?.slice(0,3).join(', ')}</span></div>
                 </div>

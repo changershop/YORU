@@ -598,6 +598,35 @@ export async function runYumeIncrementalSync(options: YumeSyncOptions = {}): Pro
           log(`✓ Updated Episode ${epNum} for "${matchedAnime.title}" with authoritative YUME stream`, 'info');
         }
       }
+
+      // Recalculate authoritative episode counts and cache on the Anime document
+      try {
+        const allEpSnapPost = await getDocs(query(collection(db, 'episodes'), where('animeId', '==', matchedAnime.id)));
+        const subEps = new Set<number>();
+        const dubEps = new Set<number>();
+        const multiEps = new Set<number>();
+
+        allEpSnapPost.docs.forEach(d => {
+          const epData = d.data() as Episode;
+          const num = epData.episodeNumber || 1;
+          if (Array.isArray(epData.servers)) {
+            epData.servers.forEach((s: any) => {
+              if (s.serverType === 'sub') subEps.add(num);
+              if (s.serverType === 'dub') dubEps.add(num);
+              if (s.serverType === 'multi') multiEps.add(num);
+            });
+          }
+        });
+
+        await updateDoc(doc(db, 'anime', matchedAnime.id), {
+          subEpisodesCount: subEps.size,
+          dubEpisodesCount: dubEps.size,
+          multiEpisodesCount: multiEps.size,
+          updatedAt: Date.now()
+        });
+      } catch (countErr) {
+        log(`Failed to update episode counts for "${matchedAnime.title}"`, 'warning');
+      }
     }
 
     // 5. Update yume_last_sync_cursor from API response root

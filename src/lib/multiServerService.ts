@@ -400,7 +400,7 @@ export async function fetchMultiServerDataset(forceRefresh = false): Promise<Mul
           status: mainItem.status === 'FINISHED' ? 'Finished' : 'Releasing',
           studios: Array.isArray(mainItem.studios) && mainItem.studios.length > 0 ? mainItem.studios.join(', ') : 'MultiServer',
           genres: mainItem.genres && mainItem.genres.length > 0 ? mainItem.genres : ['Anime'],
-          startDate: '',
+          startDate: String(new Date().getFullYear()),
           endDate: '',
           season: 'UNKNOWN',
           averageScore: typeof mainItem.score === 'number' ? `${mainItem.score}%` : (mainItem.score || '85%'),

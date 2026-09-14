@@ -160,9 +160,8 @@ export const fetchAniListMetadata = async (id: number) => {
         genres
         description
         status
-        startDate {
-          year
-        }
+        startDate { year month day }
+        endDate { year month day }
         duration
         studios(isMain: true) {
           nodes {
@@ -185,6 +184,18 @@ export const fetchAniListMetadata = async (id: number) => {
 
   return res.data?.data?.Media;
 };
+
+const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function formatAnilistDate(date: { year?: number, month?: number, day?: number }) {
+  if (!date || !date.year) return '';
+  if (date.month && date.day) {
+    return `${months[date.month - 1]} ${date.day}, ${date.year}`;
+  }
+  if (date.month) {
+    return `${months[date.month - 1]} ${date.year}`;
+  }
+  return String(date.year);
+}
 
 export const fetchFillers = async (malId: number): Promise<Set<number>> => {
   const fillers = new Set<number>();
@@ -301,8 +312,8 @@ export async function handleMultiServerSync(event: MultiServerSyncEvent): Promis
       genres: meta.genres || [],
       format: meta.format || 'TV',
       status: meta.status || 'FINISHED',
-      startDate: meta.startDate?.year ? String(meta.startDate.year) : '',
-      endDate: '',
+      startDate: formatAnilistDate(meta.startDate),
+      endDate: formatAnilistDate(meta.endDate),
       season: '',
       averageScore: meta.averageScore ? String(meta.averageScore) : '',
       studios: meta.studios?.nodes?.[0]?.name || '',

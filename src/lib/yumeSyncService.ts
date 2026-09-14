@@ -461,7 +461,7 @@ export async function runYumeIncrementalSync(options: YumeSyncOptions = {}): Pro
           status: item.status || 'Releasing',
           totalEpisodes: item.total_episodes_available || item.latest_episode_number || 12,
           episodeDuration: '24 mins',
-          startDate: String(new Date().getFullYear()),
+          startDate: '',
           endDate: '',
           season: item.season || '1',
           averageScore: '85%',

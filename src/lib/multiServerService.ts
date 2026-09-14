@@ -1,7 +1,9 @@
-import { Anime, Episode, LinkedSeason, FranchiseGroup, FranchiseWatchOrderItem } from '../types';
+import { Anime, Episode, LinkedSeason, FranchiseGroup, FranchiseWatchOrderItem, Season } from '../types';
 import { db } from './firebase';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, collectionGroup, getDocs, doc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { fetchAniListAiredDates } from './anilistDateService';
+import { normalizeAnime, normalizeEpisode } from './normalizers';
 
 export const MULTISERVER_FIREBASE_CONFIG = {
   projectId: "ai-studio-applet-webapp-da80e",
@@ -352,6 +354,10 @@ export async function fetchMultiServerDataset(forceRefresh = false): Promise<Mul
     try {
       const { groups, rawItems } = await fetchMultiServerRawDataset();
 
+      // Batch-fetch accurate AniList aired dates (Start Date, End Date, Season)
+      const allAniListIds = rawItems.map(i => i.anilist_id).filter(Boolean);
+      const aniListDatesMap = await fetchAniListAiredDates(allAniListIds);
+
       const assembledAnime: Anime[] = [];
       const assembledEpisodes: Record<string, Episode[]> = {};
 
@@ -363,51 +369,94 @@ export async function fetchMultiServerDataset(forceRefresh = false): Promise<Mul
         if (uniqueItems.length === 0) return;
 
         const mainItem = uniqueItems[0];
+        const isFranchise = group.is_franchise && uniqueItems.length > 1;
         const groupId = group.group_id;
 
-        const linkedSeasons: LinkedSeason[] = uniqueItems.map(item => {
+        // 1. Build unified LinkedSeasons across all anime in this franchise
+        const linkedSeasons: LinkedSeason[] = isFranchise ? uniqueItems.map((item, idx) => {
           const itemType = item.type || 'Season';
           let seasonName = '';
 
           if (itemType === 'Movie') {
-            seasonName = `🎬 ${item.title || 'Movie ' + (item.season || '')}`.trim();
+            seasonName = item.title && item.title.toLowerCase().includes('movie')
+              ? item.title
+              : `🎬 ${item.title || 'Movie ' + (item.season || '')}`.trim();
           } else if (itemType === 'Special') {
             seasonName = `⭐ ${item.season || 'Special'}${item.title ? ': ' + item.title : ''}`;
           } else if (itemType === 'OVA') {
             seasonName = `💿 OVA ${item.season || ''}${item.title ? ': ' + item.title : ''}`;
           } else {
-            seasonName = `Season ${item.season || '1'}${item.title ? ': ' + item.title : ''}`;
+            // Clean season naming: avoid redundant "Season Season" or "Season 1: Season 1"
+            const rawTitle = (item.title || '').trim();
+            if (rawTitle && !rawTitle.toLowerCase().startsWith('season')) {
+              seasonName = `Season ${item.season || idx + 1}: ${rawTitle}`;
+            } else if (rawTitle) {
+              seasonName = rawTitle;
+            } else {
+              seasonName = `Season ${item.season || idx + 1}`;
+            }
           }
+
+          seasonName = seasonName.replace(/Season Season/gi, 'Season').trim();
+
+          const itemSlug = item.anime_id === mainItem.anime_id
+            ? groupId
+            : `ms_${item.anime_id}`;
 
           return {
             animeId: item.anime_id,
-            seasonNumber: item.order,
+            seasonNumber: item.order || idx + 1,
             seasonName: seasonName,
-            slug: `${groupId}-${item.anime_id}`,
+            slug: itemSlug,
             title: seasonName
           };
-        });
+        }) : [];
+
+        // 2. Build Season Tabs matching the episodes' seasonId
+        const seasonTabs: Season[] = isFranchise ? uniqueItems.map((item, idx) => ({
+          id: String(item.anime_id),
+          name: linkedSeasons[idx]?.seasonName || `Season ${idx + 1}`,
+          order: item.order || idx + 1
+        })) : [{ id: 's1', name: 'Season 1', order: 1 }];
+
+        // 3. Resolve accurate canonical release dates from AniList
+        const mainAniDate = aniListDatesMap.get(String(mainItem.anilist_id));
+        const mainStart = mainAniDate?.startDate || (mainItem.aired ? mainItem.aired.split(/\s+to\s+|\s*-\s*/i)[0].trim() : '') || (mainItem.premiered ? String(mainItem.premiered) : '');
+        const mainEnd = mainAniDate?.endDate || (mainItem.aired && (mainItem.aired.includes(' to ') || mainItem.aired.includes(' - ')) ? mainItem.aired.split(/\s+to\s+|\s*-\s*/i).pop()?.trim() : '') || '';
+        const mainAired = mainAniDate?.aired || mainItem.aired || (mainStart && mainEnd && mainStart !== mainEnd ? `${mainStart} to ${mainEnd}` : mainStart);
+        const mainPrem = mainAniDate?.season || mainItem.premiered || '';
+
+        const primaryId = isFranchise ? groupId : `ms_${mainItem.anime_id}`;
+        const primarySlug = isFranchise ? groupId : (mainItem.title ? mainItem.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : `ms-${mainItem.anime_id}`);
 
         const animeObj: Anime = {
-          id: groupId,
+          id: primaryId,
           aniListId: String(mainItem.anilist_id || mainItem.anime_id),
+          malId: mainItem.mal_id ? String(mainItem.mal_id) : undefined,
           title: group.title,
-          nativeTitle: group.title,
-          slug: groupId,
+          nativeTitle: mainItem.japanese || group.title,
+          slug: primarySlug,
           format: mainItem.type === 'Movie' ? 'Movie' : 'TV',
           totalEpisodes: mainItem.total_episodes || mainItem.episodes_count || 12,
-          episodeDuration: '24 mins',
+          episodeDuration: mainItem.duration || '24 mins',
           status: mainItem.status === 'FINISHED' ? 'Finished' : 'Releasing',
           studios: Array.isArray(mainItem.studios) && mainItem.studios.length > 0 ? mainItem.studios.join(', ') : 'MultiServer',
           genres: mainItem.genres && mainItem.genres.length > 0 ? mainItem.genres : ['Anime'],
-          startDate: String(new Date().getFullYear()),
-          endDate: '',
-          season: 'UNKNOWN',
+          startDate: mainStart,
+          endDate: mainEnd,
+          aired_from: mainStart || undefined,
+          aired_to: mainEnd || undefined,
+          aired_text: mainAired || undefined,
+          aired: mainAired || undefined,
+          premiered: mainPrem || undefined,
+          season: mainPrem || (isFranchise ? 'Franchise' : '1'),
+          seasonYear: mainAniDate?.seasonYear,
           averageScore: typeof mainItem.score === 'number' ? `${mainItem.score}%` : (mainItem.score || '85%'),
           poster: mainItem.cover_image || 'https://images.unsplash.com/photo-1542451313056-b7c8e626645f?auto=format&fit=crop&q=80&w=600',
           backdrop: mainItem.backdrop_image || mainItem.cover_image || '',
-          synopsis: mainItem.synopsis || 'Imported from MultiServer.',
-          seasons: [{ id: 's1', name: 'Season 1', order: 1 }],
+          synopsis: mainItem.synopsis || group.items[0]?.synopsis || 'Imported from MultiServer.',
+          seasons: seasonTabs,
+          seasonGroupId: isFranchise ? groupId : undefined,
           linkedSeasons: linkedSeasons,
           subEpisodesCount: 0,
           dubEpisodesCount: 0,
@@ -420,14 +469,69 @@ export async function fetchMultiServerDataset(forceRefresh = false): Promise<Mul
 
         assembledAnime.push(animeObj);
 
-        // Build Episodes
+        // 4. For franchise groups, also register individual member anime objects so navigation & search work seamlessly
+        if (isFranchise) {
+          uniqueItems.forEach((item, idx) => {
+            const itemAniDate = aniListDatesMap.get(String(item.anilist_id));
+            const iStart = itemAniDate?.startDate || (item.aired ? item.aired.split(/\s+to\s+|\s*-\s*/i)[0].trim() : '') || (item.premiered ? String(item.premiered) : '');
+            const iEnd = itemAniDate?.endDate || (item.aired && (item.aired.includes(' to ') || item.aired.includes(' - ')) ? item.aired.split(/\s+to\s+|\s*-\s*/i).pop()?.trim() : '') || '';
+            const iAired = itemAniDate?.aired || item.aired || (iStart && iEnd && iStart !== iEnd ? `${iStart} to ${iEnd}` : iStart);
+            const iPrem = itemAniDate?.season || item.premiered || '';
+
+            const memberAnime: Anime = {
+              id: `ms_${item.anime_id}`,
+              aniListId: String(item.anilist_id || item.anime_id),
+              malId: item.mal_id ? String(item.mal_id) : undefined,
+              title: item.title || `${group.title} - Season ${item.season || idx + 1}`,
+              nativeTitle: item.japanese || group.title,
+              slug: item.anime_id === mainItem.anime_id ? groupId : `ms_${item.anime_id}`,
+              format: item.type === 'Movie' ? 'Movie' : 'TV',
+              totalEpisodes: item.total_episodes || item.episodes_count || 12,
+              episodeDuration: item.duration || '24 mins',
+              status: item.status === 'FINISHED' ? 'Finished' : 'Releasing',
+              studios: Array.isArray(item.studios) && item.studios.length > 0 ? item.studios.join(', ') : 'MultiServer',
+              genres: item.genres && item.genres.length > 0 ? item.genres : ['Anime'],
+              startDate: iStart,
+              endDate: iEnd,
+              aired_from: iStart || undefined,
+              aired_to: iEnd || undefined,
+              aired_text: iAired || undefined,
+              aired: iAired || undefined,
+              premiered: iPrem || undefined,
+              season: iPrem || `Season ${item.season || idx + 1}`,
+              seasonYear: itemAniDate?.seasonYear,
+              averageScore: typeof item.score === 'number' ? `${item.score}%` : (item.score || '85%'),
+              poster: item.cover_image || animeObj.poster,
+              backdrop: item.backdrop_image || item.cover_image || animeObj.backdrop,
+              synopsis: item.synopsis || animeObj.synopsis,
+              seasons: seasonTabs,
+              linkedSeasons: linkedSeasons,
+              seasonGroupId: groupId,
+              seasonNumber: item.order || idx + 1,
+              subEpisodesCount: 0,
+              dubEpisodesCount: 0,
+              multiEpisodesCount: item.episodes_available?.length || 0,
+              recentlyAddedAt: Date.now(),
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              published: true
+            };
+
+            if (item.anime_id !== mainItem.anime_id) {
+              assembledAnime.push(memberAnime);
+            }
+          });
+        }
+
+        // 5. Build Episodes for this group and index by group ID and individual item IDs
         uniqueItems.forEach(item => {
+          const seasonIdForEp = isFranchise ? String(item.anime_id) : 's1';
           const itemEps: Episode[] = (item.episodes_available || []).map(epNum => {
             const anilistOrId = item.anilist_id || item.mal_id || item.anime_id;
             return {
               id: `${item.anime_id}_${epNum}`,
-              animeId: groupId,
-              seasonId: item.anime_id,
+              animeId: primaryId,
+              seasonId: seasonIdForEp,
               episodeNumber: epNum,
               title: `Episode ${epNum}`,
               isFiller: false,
@@ -444,10 +548,14 @@ export async function fetchMultiServerDataset(forceRefresh = false): Promise<Mul
             };
           });
 
-          if (!assembledEpisodes[groupId]) {
-            assembledEpisodes[groupId] = [];
+          if (!assembledEpisodes[primaryId]) {
+            assembledEpisodes[primaryId] = [];
           }
-          assembledEpisodes[groupId].push(...itemEps);
+          assembledEpisodes[primaryId].push(...itemEps);
+
+          // Index by individual anime IDs for instant lookup
+          assembledEpisodes[item.anime_id] = itemEps.map(e => ({ ...e, animeId: item.anime_id }));
+          assembledEpisodes[`ms_${item.anime_id}`] = itemEps.map(e => ({ ...e, animeId: `ms_${item.anime_id}` }));
         });
       });
 
@@ -494,11 +602,20 @@ export async function getMultiServerEpisodesForAnime(animeIdOrSlug: string): Pro
   if (dataset.episodesByAnimeId[animeIdOrSlug]) {
     return dataset.episodesByAnimeId[animeIdOrSlug];
   }
+
+  const bareId = animeIdOrSlug.replace(/^ms_/, '');
+  if (dataset.episodesByAnimeId[bareId]) {
+    return dataset.episodesByAnimeId[bareId];
+  }
+  if (dataset.episodesByAnimeId[`ms_${bareId}`]) {
+    return dataset.episodesByAnimeId[`ms_${bareId}`];
+  }
   
   const target = dataset.anime.find(a => 
     a.slug.toLowerCase() === animeIdOrSlug.toLowerCase() || 
     a.id.toLowerCase() === animeIdOrSlug.toLowerCase() ||
-    (a.aniListId && a.aniListId.toLowerCase() === animeIdOrSlug.toLowerCase())
+    (a.aniListId && a.aniListId.toLowerCase() === animeIdOrSlug.toLowerCase()) ||
+    (a.aniListId && a.aniListId.toLowerCase() === bareId.toLowerCase())
   );
   if (target && dataset.episodesByAnimeId[target.id]) {
     return dataset.episodesByAnimeId[target.id];

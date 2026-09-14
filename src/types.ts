@@ -143,6 +143,7 @@ export interface Anime {
   id: string;
   title: string;
   nativeTitle: string;
+  englishTitle?: string;
   aniListId?: string;
   malId?: string;
   slug: string;
@@ -152,7 +153,11 @@ export interface Anime {
   status: string; // 'Finished', 'Releasing', 'Not yet released'
   startDate: string;
   endDate: string;
+  aired_from?: string;
+  aired_to?: string;
+  aired_text?: string;
   season: string; // e.g., 'Fall 2023'
+  seasonYear?: number;
   averageScore: string; // e.g., '91%'
   studios: string; // e.g., 'MADHOUSE'
   genres: string[];
@@ -177,9 +182,11 @@ export interface Anime {
   coverImage?: string;
   bannerImage?: string;
   japanese?: string;
+  romajiTitle?: string;
   synonyms?: string[] | string;
   aired?: string;
   premiered?: string;
+  aired_status?: string;
   duration?: string;
   malScore?: string | number;
   episodes?: number;
@@ -221,6 +228,8 @@ export interface Episode {
   seasonId: string;
   episodeNumber: number;
   title: string;
+  airDate?: string;
+  duration?: string;
   isFiller: boolean;
   servers: ServerLink[];
   thumbnailUrl: string;

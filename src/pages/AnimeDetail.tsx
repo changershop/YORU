@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { normalizeEpisodes } from '../lib/episodeUtils';
+import { formatAiredDisplay } from '../lib/normalizers';
 import { Anime, Episode } from '../types';
 import { getAnimeBySlug, getEpisodesForAnime } from '../lib/data';
 import { Play, Plus, Star, Calendar, Clock, Loader2, PlayCircle, Info, Hash, Monitor, Tv, Video, Activity } from 'lucide-react';
@@ -313,7 +314,7 @@ export const AnimeDetail = () => {
             )}
             <div>
               <span className="block text-[10px] font-bold uppercase tracking-widest text-yoru-text-muted mb-1">Aired</span>
-              <span className="text-sm font-medium text-white">{anime.aired || (anime.startDate?.length > 4 ? anime.startDate.substring(0, 10) : anime.startDate) || '-'}</span>
+              <span className="text-sm font-medium text-white">{formatAiredDisplay(anime) || '-'}</span>
             </div>
             <div>
               <span className="block text-[10px] font-bold uppercase tracking-widest text-yoru-text-muted mb-1">Premiered</span>
@@ -436,7 +437,7 @@ export const AnimeDetail = () => {
                   {anime.linkedSeasons
                     .sort((a, b) => (a.seasonNumber || 1) - (b.seasonNumber || 1))
                     .map((s, idx) => {
-                      const isCurrent = s.animeId === anime.id;
+                      const isCurrent = s.animeId === anime.id || s.slug === anime.slug || (s.animeId && (s.animeId === anime.aniListId || `ms_${s.animeId}` === anime.id));
                       return isCurrent ? (
                         <span
                           key={`${s.animeId}-${idx}`}

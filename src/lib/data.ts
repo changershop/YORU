@@ -2,27 +2,50 @@ import { collection, getDocs, doc, getDoc, query, where, limit, orderBy, deleteD
 import { db } from './firebase';
 import { Anime, Episode, SpotlightSlide } from '../types';
 import { getMultiServerAnime, getMultiServerAnimeBySlug, getMultiServerEpisodesForAnime } from './multiServerService';
+import { 
+  normalizeAnime, 
+  normalizeEpisode, 
+  normalizeServer, 
+  getCanonicalReleaseTimestamp, 
+  getCanonicalEndTimestamp 
+} from './normalizers';
+import { fetchAniListAiredDates, getCachedAniListAired } from './anilistDateService';
+
+// Module-level in-memory cache for high-performance instant navigation
+let animeCache: { data: Anime[]; timestamp: number } | null = null;
+let animeCachePromise: Promise<Anime[]> | null = null;
+const ANIME_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
+export function invalidateAnimeCache() {
+  animeCache = null;
+  animeCachePromise = null;
+}
 
 export function mergeAnimeDatasets(localList: Anime[], multiList: Anime[]): Anime[] {
   const map = new Map<string, Anime>();
   const aniListMap = new Map<string, Anime>();
   const slugMap = new Map<string, Anime>();
 
-  // 1. Index local items
-  localList.forEach(a => {
+  // 1. Index local items (pass through standard normalizer)
+  localList.forEach(raw => {
+    const a = normalizeAnime(raw);
     map.set(a.id, a);
     if (a.aniListId) aniListMap.set(String(a.aniListId), a);
     if (a.slug) slugMap.set(a.slug.toLowerCase(), a);
   });
 
-  // 2. Merge multiServer items
-  multiList.forEach(m => {
+  // 2. Merge multiServer items (pass through standard normalizer)
+  multiList.forEach(rawM => {
+    const m = normalizeAnime(rawM);
     const existing = map.get(m.id) || 
       (m.aniListId ? aniListMap.get(String(m.aniListId)) : null) || 
       (m.slug ? slugMap.get(m.slug.toLowerCase()) : null);
 
     if (existing) {
       existing.linkedSeasons = (existing.linkedSeasons && existing.linkedSeasons.length > 0) ? existing.linkedSeasons : m.linkedSeasons;
+      if (m.seasons && (!existing.seasons || existing.seasons.length <= 1)) {
+        existing.seasons = m.seasons;
+      }
       if (m.subEpisodesCount && (!existing.subEpisodesCount || m.subEpisodesCount > existing.subEpisodesCount)) {
         existing.subEpisodesCount = m.subEpisodesCount;
       }
@@ -32,6 +55,22 @@ export function mergeAnimeDatasets(localList: Anime[], multiList: Anime[]): Anim
       if (!existing.backdrop) existing.backdrop = m.backdrop;
       if (!existing.synopsis || existing.synopsis === 'No synopsis available.') existing.synopsis = m.synopsis;
       if (!existing.genres || existing.genres.length === 0) existing.genres = m.genres;
+
+      // Preserve accurate dates from MultiServer/AniList over generic fallback
+      if (m.startDate && (!existing.startDate || existing.startDate.includes('2026'))) {
+        existing.startDate = m.startDate;
+      }
+      if (m.endDate && !existing.endDate) {
+        existing.endDate = m.endDate;
+      }
+      if (m.aired && (!existing.aired || existing.aired.includes('2026'))) {
+        existing.aired = m.aired;
+      }
+      if (m.aired_from && !existing.aired_from) existing.aired_from = m.aired_from;
+      if (m.aired_to && !existing.aired_to) existing.aired_to = m.aired_to;
+      if (m.premiered && (!existing.premiered || existing.premiered.includes('2026'))) existing.premiered = m.premiered;
+      if (m.season && (!existing.season || existing.season.includes('2026'))) existing.season = m.season;
+      if (m.seasonYear && !existing.seasonYear) existing.seasonYear = m.seasonYear;
     } else {
       map.set(m.id, m);
       if (m.aniListId) aniListMap.set(String(m.aniListId), m);
@@ -131,30 +170,55 @@ export const mockEpisodes: Episode[] = [
   }
 ];
 
-export async function getAllAnime(): Promise<Anime[]> {
-  try {
-    const [localSnap, multiList] = await Promise.all([
-      getDocs(collection(db, 'anime')).catch(() => null),
-      getMultiServerAnime().catch(() => [])
-    ]);
+export async function getAllAnime(forceRefresh = false): Promise<Anime[]> {
+  const now = Date.now();
 
-    const localList: Anime[] = localSnap && !localSnap.empty
-      ? localSnap.docs.map(doc => doc.data() as Anime)
-      : [];
-
-    const merged = mergeAnimeDatasets(localList, multiList);
-    const filtered = merged.filter(a => a.published && !a.isBanned);
-    if (filtered.length === 0) return mockAnimeList;
-    return filtered;
-  } catch (e) {
-    return mockAnimeList;
+  // Return fresh in-memory cache if available
+  if (!forceRefresh && animeCache && (now - animeCache.timestamp < ANIME_CACHE_TTL)) {
+    return animeCache.data;
   }
+
+  // Deduplicate in-flight promises so parallel calls do not trigger multiple Firestore queries
+  if (animeCachePromise) {
+    return animeCachePromise;
+  }
+
+  animeCachePromise = (async () => {
+    try {
+      const [localSnap, multiList] = await Promise.all([
+        getDocs(collection(db, 'anime')).catch(() => null),
+        getMultiServerAnime().catch(() => [])
+      ]);
+
+      const localList: Anime[] = localSnap && !localSnap.empty
+        ? localSnap.docs.map(doc => doc.data() as Anime)
+        : [];
+
+      const merged = mergeAnimeDatasets(localList, multiList);
+      const filtered = merged.filter(a => a.published && !a.isBanned);
+      const finalResult = filtered.length > 0 ? filtered : mockAnimeList;
+
+      animeCache = {
+        data: finalResult,
+        timestamp: Date.now()
+      };
+
+      return finalResult;
+    } catch (e) {
+      console.warn("getAllAnime error:", e);
+      return mockAnimeList;
+    } finally {
+      animeCachePromise = null;
+    }
+  })();
+
+  return animeCachePromise;
 }
 
-export async function getTrendingAnime(maxCount = 10): Promise<Anime[]> {
+export async function getTrendingAnime(maxCount = 10, prefetchedAnime?: Anime[]): Promise<Anime[]> {
   try {
     const [allAnimeList, progressSnap] = await Promise.all([
-      getAllAnime(),
+      prefetchedAnime ? Promise.resolve(prefetchedAnime) : getAllAnime(),
       getDocs(collection(db, 'watchProgress')).catch(() => null)
     ]);
 
@@ -189,12 +253,23 @@ export async function getTrendingAnime(maxCount = 10): Promise<Anime[]> {
 
 export async function getAnimeBySlug(slug: string): Promise<Anime | null> {
   try {
+    // 1. Check in-memory cache first if already loaded
+    if (animeCache && animeCache.data.length > 0) {
+      const clean = slug.toLowerCase().trim();
+      const inCache = animeCache.data.find(a => 
+        a.slug?.toLowerCase() === clean || 
+        a.id.toLowerCase() === clean ||
+        (a.aniListId && a.aniListId.toLowerCase() === clean)
+      );
+      if (inCache) return inCache;
+    }
+
     let localAnime: Anime | null = null;
     try {
       const q = query(collection(db, 'anime'), where('slug', '==', slug), limit(1));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        localAnime = querySnapshot.docs[0].data() as Anime;
+        localAnime = normalizeAnime(querySnapshot.docs[0].data());
       }
     } catch {
       // ignore
@@ -203,24 +278,36 @@ export async function getAnimeBySlug(slug: string): Promise<Anime | null> {
     const multiAnime = await getMultiServerAnimeBySlug(slug);
 
     if (localAnime && multiAnime) {
-      return {
+      const normalizedMulti = normalizeAnime(multiAnime);
+      return normalizeAnime({
         ...localAnime,
-        linkedSeasons: multiAnime.linkedSeasons || localAnime.linkedSeasons,
-        subEpisodesCount: multiAnime.subEpisodesCount || localAnime.subEpisodesCount,
-        multiEpisodesCount: multiAnime.multiEpisodesCount || localAnime.multiEpisodesCount,
-        dubEpisodesCount: multiAnime.dubEpisodesCount || localAnime.dubEpisodesCount,
-        poster: localAnime.poster && !localAnime.poster.includes('unsplash') ? localAnime.poster : multiAnime.poster,
-        backdrop: localAnime.backdrop || multiAnime.backdrop,
-        synopsis: localAnime.synopsis && localAnime.synopsis !== 'No synopsis available.' ? localAnime.synopsis : multiAnime.synopsis
-      };
+        linkedSeasons: (normalizedMulti.linkedSeasons && normalizedMulti.linkedSeasons.length > 0) 
+          ? normalizedMulti.linkedSeasons 
+          : localAnime.linkedSeasons,
+        seasons: (normalizedMulti.seasons && normalizedMulti.seasons.length > 1)
+          ? normalizedMulti.seasons
+          : localAnime.seasons,
+        subEpisodesCount: normalizedMulti.subEpisodesCount || localAnime.subEpisodesCount,
+        multiEpisodesCount: normalizedMulti.multiEpisodesCount || localAnime.multiEpisodesCount,
+        dubEpisodesCount: normalizedMulti.dubEpisodesCount || localAnime.dubEpisodesCount,
+        poster: localAnime.poster && !localAnime.poster.includes('unsplash') ? localAnime.poster : normalizedMulti.poster,
+        backdrop: localAnime.backdrop || normalizedMulti.backdrop,
+        synopsis: localAnime.synopsis && localAnime.synopsis !== 'No synopsis available.' ? localAnime.synopsis : normalizedMulti.synopsis,
+        startDate: normalizedMulti.startDate || localAnime.startDate,
+        endDate: normalizedMulti.endDate || localAnime.endDate,
+        aired: normalizedMulti.aired || localAnime.aired,
+        premiered: normalizedMulti.premiered || localAnime.premiered
+      });
     }
 
-    if (localAnime) return localAnime;
-    if (multiAnime) return multiAnime;
+    if (localAnime) return normalizeAnime(localAnime);
+    if (multiAnime) return normalizeAnime(multiAnime);
 
-    return mockAnimeList.find(a => a.slug === slug) || null;
+    const mockMatch = mockAnimeList.find(a => a.slug === slug);
+    return mockMatch ? normalizeAnime(mockMatch) : null;
   } catch (e) {
-    return mockAnimeList.find(a => a.slug === slug) || null;
+    const mockMatch = mockAnimeList.find(a => a.slug === slug);
+    return mockMatch ? normalizeAnime(mockMatch) : null;
   }
 }
 
@@ -231,17 +318,18 @@ export async function getEpisodesForAnime(animeId: string): Promise<Episode[]> {
       const q = query(collection(db, 'episodes'), where('animeId', '==', animeId));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        localEps = querySnapshot.docs.map(doc => doc.data() as Episode);
+        localEps = querySnapshot.docs.map(doc => normalizeEpisode(doc.data()));
       }
     } catch {
       // ignore
     }
 
-    const multiEps = await getMultiServerEpisodesForAnime(animeId);
+    const multiEpsRaw = await getMultiServerEpisodesForAnime(animeId);
+    const multiEps = multiEpsRaw.map(e => normalizeEpisode(e));
 
     if (localEps.length === 0) {
       if (multiEps.length > 0) return multiEps;
-      return mockEpisodes.filter(e => e.animeId === animeId);
+      return mockEpisodes.filter(e => e.animeId === animeId).map(e => normalizeEpisode(e));
     }
 
     if (multiEps.length === 0) {
@@ -260,7 +348,7 @@ export async function getEpisodesForAnime(animeId: string): Promise<Episode[]> {
         (me.servers || []).forEach(ms => {
           if (!serverSet.has(ms.embedLink)) {
             serverSet.add(ms.embedLink);
-            combined.push(ms);
+            combined.push(normalizeServer(ms));
           }
         });
         existing.servers = combined;
@@ -271,49 +359,25 @@ export async function getEpisodesForAnime(animeId: string): Promise<Episode[]> {
 
     return Array.from(epByNum.values()).sort((a, b) => a.episodeNumber - b.episodeNumber);
   } catch (e) {
-    return mockEpisodes.filter(e => e.animeId === animeId);
+    return mockEpisodes.filter(e => e.animeId === animeId).map(e => normalizeEpisode(e));
   }
 }
 
 export function getAnimeReleaseTimestamp(anime: Anime): number {
-  if (anime.startDate) {
-    const parsed = Date.parse(anime.startDate);
-    if (!isNaN(parsed)) return parsed;
-    const yearMatch = anime.startDate.match(/\b(19\d\d|20\d\d)\b/);
-    if (yearMatch) {
-      return new Date(parseInt(yearMatch[1], 10), 0, 1).getTime();
-    }
-  }
-  if (anime.season) {
-    const yearMatch = anime.season.match(/\b(19\d\d|20\d\d)\b/);
-    if (yearMatch) {
-      const year = parseInt(yearMatch[1], 10);
-      const isWinter = /winter/i.test(anime.season);
-      const isSpring = /spring/i.test(anime.season);
-      const isSummer = /summer/i.test(anime.season);
-      const isFall = /fall/i.test(anime.season);
-      const month = isFall ? 9 : isSummer ? 6 : isSpring ? 3 : 0;
-      return new Date(year, month, 1).getTime();
-    }
-  }
-  return anime.createdAt || 0;
+  const ts = getCanonicalReleaseTimestamp(anime);
+  if (ts !== null && !isNaN(ts)) return ts;
+  return 0;
 }
 
 export function getAnimeEndTimestamp(anime: Anime): number {
-  if (anime.endDate) {
-    const parsed = Date.parse(anime.endDate);
-    if (!isNaN(parsed)) return parsed;
-    const yearMatch = anime.endDate.match(/\b(19\d\d|20\d\d)\b/);
-    if (yearMatch) {
-      return new Date(parseInt(yearMatch[1], 10), 11, 31).getTime();
-    }
-  }
+  const ts = getCanonicalEndTimestamp(anime);
+  if (ts !== null && !isNaN(ts)) return ts;
   return getAnimeReleaseTimestamp(anime);
 }
 
-export async function getRecentlyAddedAnime(maxCount = 10): Promise<Anime[]> {
+export async function getRecentlyAddedAnime(maxCount = 10, prefetchedAnime?: Anime[]): Promise<Anime[]> {
   try {
-    const all = await getAllAnime();
+    const all = prefetchedAnime || await getAllAnime();
     const sorted = [...all];
 
     // Sort strictly by when it was added to the site (recentlyAddedAt or createdAt)
@@ -337,29 +401,38 @@ export function getLatestReleasesAnime(allAnime: Anime[], maxCount = 10): Anime[
   // Finished anime is excluded unless it ended recently (within last 120 days)
   const RECENT_FINISHED_MS = 120 * 24 * 60 * 60 * 1000;
 
-  const filtered = allAnime.filter(a => {
-    const releaseTime = getAnimeReleaseTimestamp(a);
-    if (!releaseTime || isNaN(releaseTime)) return false;
+  const validReleases: { anime: Anime; releaseTime: number }[] = [];
 
-    // Exclude anime with old release dates
+  for (const a of allAnime) {
+    const releaseTime = getCanonicalReleaseTimestamp(a);
+    // Exclude if no legitimate release date can be determined
+    if (releaseTime === null || isNaN(releaseTime) || releaseTime === 0) continue;
+
+    // Exclude anime with release dates older than 1 year
     if (now - releaseTime > ONE_YEAR_MS) {
-      return false;
+      continue;
+    }
+
+    // Exclude future anime announced too far in advance (> 45 days ahead)
+    if (releaseTime - now > 45 * 24 * 60 * 60 * 1000) {
+      continue;
     }
 
     // Finished anime check: cannot be finished unless it ended recently
     const isFinished = (a.status || '').toLowerCase() === 'finished';
     if (isFinished) {
-      const endTime = getAnimeEndTimestamp(a);
+      const endTime = getCanonicalEndTimestamp(a) || releaseTime;
       const isRecentlyFinished = (now - endTime) <= RECENT_FINISHED_MS;
       if (!isRecentlyFinished) {
-        return false;
+        continue;
       }
     }
 
-    return true;
-  });
+    validReleases.push({ anime: a, releaseTime });
+  }
 
-  const sorted = filtered.sort((a, b) => getAnimeReleaseTimestamp(b) - getAnimeReleaseTimestamp(a));
+  validReleases.sort((a, b) => b.releaseTime - a.releaseTime);
+  const sorted = validReleases.map(v => v.anime);
   return typeof maxCount === 'number' && maxCount > 0 ? sorted.slice(0, maxCount) : sorted;
 }
 

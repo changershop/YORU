@@ -688,12 +688,13 @@ export const Watch = () => {
                   {/* Franchise / Linked Season Selector (Cross-Anime Seasons) */}
                   {anime.linkedSeasons && anime.linkedSeasons.length > 1 ? (
                     <select 
-                      value={anime.id}
+                      value={
+                        anime.linkedSeasons.find(s => s.animeId === anime.id || s.slug === anime.slug || (s.animeId && (s.animeId === anime.aniListId || `ms_${s.animeId}` === anime.id)))?.slug || anime.slug
+                      }
                       onChange={(e) => {
-                        const targetAnimeId = e.target.value;
-                        const targetSeason = anime.linkedSeasons?.find(ls => ls.animeId === targetAnimeId);
-                        if (targetSeason && targetSeason.slug) {
-                          navigate(`/watch/${targetSeason.slug}/1`);
+                        const targetSlug = e.target.value;
+                        if (targetSlug) {
+                          navigate(`/watch/${targetSlug}/1`);
                         }
                       }}
                       className="bg-white/5 border border-white/10 text-xs font-semibold text-white rounded-lg px-3 py-1.5 h-8 outline-none hover:border-white/20 focus:border-white/30 transition-colors cursor-pointer"
@@ -702,7 +703,7 @@ export const Watch = () => {
                       {anime.linkedSeasons
                         .sort((a, b) => (a.seasonNumber || 1) - (b.seasonNumber || 1))
                         .map((s, idx) => (
-                          <option key={`${s.animeId}-${idx}`} value={s.animeId} className="bg-[#0F1117] text-white">
+                          <option key={`${s.slug}-${idx}`} value={s.slug || s.animeId} className="bg-[#0F1117] text-white">
                           {s.seasonName ? s.seasonName.replace(/Season Season/g, 'Season') : (s.title || `Season ${s.seasonNumber}`)}
                           </option>
                         ))}

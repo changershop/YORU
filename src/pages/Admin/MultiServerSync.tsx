@@ -31,6 +31,7 @@ import {
   scanMultiServerComparison,
   syncSingleMultiServerAnime,
   runYumeIncrementalSync,
+  runYumeSetSync,
   resetYumeSyncCursor,
   MultiServerSyncSettings,
   MultiServerSyncStats,
@@ -195,6 +196,37 @@ export const MultiServerSync: React.FC = () => {
     }
   };
 
+  const handleRunSetSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    stopSignalRef.current = false;
+    addLog('>>> Starting YUME /set Sync (Skip Exists) <<<', 'info');
+
+    try {
+      const res = await runYumeSetSync({
+        onLog: (msg, type) => addLog(msg, type),
+        onProgress: (current, total, title) => {
+          setProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) });
+        },
+        stopSignalRef
+      });
+
+      if (res.success) {
+        addLog(`=== ${res.message} ===`, 'success');
+      } else {
+        addLog(`=== Sync issue: ${res.message} ===`, 'error');
+      }
+
+      const updatedSettings = await getMultiServerSyncSettings();
+      setSettings(updatedSettings);
+      await runScan();
+    } catch (err: any) {
+      addLog(`Unexpected sync failure: ${err.message}`, 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleResetCursor = async () => {
     if (!window.confirm('Reset the YUME sync cursor to 0? The next incremental sync will evaluate recent updates from the beginning.')) return;
     try {
@@ -328,23 +360,23 @@ export const MultiServerSync: React.FC = () => {
               <Button
                 variant="primary"
                 size="sm"
+                onClick={handleRunSetSync}
+                disabled={isScanning}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-lg shadow-indigo-600/25 border border-indigo-500/40"
+              >
+                <Database className="w-4 h-4 mr-2" />
+                YUME /set Sync (Skip Existing)
+              </Button>
+
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleRunIncrementalSync}
                 disabled={isScanning}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-lg shadow-emerald-600/25 border border-emerald-500/40"
               >
                 <Zap className="w-4 h-4 mr-2 fill-current" />
-                Fast Incremental Sync
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleStartSync('all')}
-                disabled={isScanning}
-                className="border-indigo-500/40 bg-indigo-950/30 hover:bg-indigo-900/40 text-indigo-200 font-medium"
-              >
-                <Play className="w-4 h-4 mr-2 fill-current" />
-                Full Sync (Set API)
+                YUME /recent Sync (No Skips)
               </Button>
             </>
           )}

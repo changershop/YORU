@@ -191,7 +191,7 @@ export const Navigation = () => {
                           navigate(`/anime/${searchResults[focusedIndex].slug}`);
                         } else if (searchQuery) {
                           setIsSearchOpen(false);
-                          navigate('/search', { state: { query: searchQuery } });
+                          navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
                         }
                       }
                     }}
@@ -375,7 +375,7 @@ export const Navigation = () => {
                             navigate(`/anime/${searchResults[focusedIndex].slug}`);
                           } else if (searchQuery) {
                             setIsSearchOpen(false);
-                            navigate('/search', { state: { query: searchQuery } });
+                            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
                           }
                         }
                       }}

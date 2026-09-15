@@ -829,6 +829,7 @@ export async function syncSingleMultiServerAnime(
 // Re-export Authoritative YUME Incremental Sync Engine
 export {
   runYumeIncrementalSync,
+  runYumeSetSync,
   getYumeSyncSettings,
   saveYumeSyncSettings,
   getYumeSyncCursor,

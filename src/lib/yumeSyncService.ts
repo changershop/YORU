@@ -326,6 +326,217 @@ export interface YumeSyncOptions {
   stopSignalRef?: { current: boolean };
 }
 
+export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
+  success: boolean;
+  message: string;
+  stats: YumeSyncStats;
+}> {
+  const startTime = Date.now();
+  const log = (msg: string, type: 'info' | 'success' | 'warning' | 'error' | 'skip' = 'info') => {
+    if (options.onLog) options.onLog(msg, type);
+    console.log(`[YUME Set Sync ${type.toUpperCase()}] ${msg}`);
+  };
+
+  const stats: YumeSyncStats = {
+    totalChecked: 0,
+    newAnimeAdded: 0,
+    existingAnimeUpdated: 0,
+    episodesAdded: 0,
+    episodesUpdated: 0,
+    episodesSkipped: 0,
+    durationMs: 0,
+    skippedByCursor: 0
+  };
+
+  try {
+    log('Authoritative YUME /set Sync initializing...', 'info');
+    await saveYumeSyncSettings({
+      lastSyncStatus: 'running',
+      lastSyncMessage: `Running full /set sync...`
+    });
+
+    log('Calling GET /api/set...', 'info');
+    const responseData = await fetchYumeCatalog();
+    
+    // Normalize response
+    const setItems: YumeRecentItem[] = Array.isArray(responseData?.set)
+      ? responseData.set
+      : Array.isArray(responseData?.items)
+      ? responseData.items
+      : Array.isArray(responseData?.data)
+      ? responseData.data
+      : Array.isArray(responseData)
+      ? responseData
+      : [];
+
+    log(`YUME API /set returned ${setItems.length} total anime entries.`, 'info');
+
+    if (setItems.length === 0) {
+      stats.durationMs = Date.now() - startTime;
+      await saveYumeSyncSettings({
+        lastSyncStatus: 'success',
+        lastSyncMessage: `No entries returned from /set`,
+        lastSyncTimestamp: Date.now(),
+        lastSyncStats: stats
+      });
+      return { success: true, message: 'No entries returned from /set.', stats };
+    }
+
+    log('Indexing local Firestore anime library for matching...', 'info');
+    const animeSnap = await getDocs(collection(db, 'anime'));
+    const localAnimeList: Anime[] = animeSnap.docs.map(d => ({ ...(d.data() as Anime), id: d.id }));
+
+    const mapByAniList = new Map<string, Anime>();
+    const mapByMal = new Map<string, Anime>();
+    const mapBySlug = new Map<string, Anime>();
+    const mapByTitle = new Map<string, Anime>();
+    const mapById = new Map<string, Anime>();
+
+    localAnimeList.forEach(a => {
+      if (a.id) mapById.set(a.id, a);
+      if (a.aniListId) mapByAniList.set(String(a.aniListId), a);
+      if (a.malId) mapByMal.set(String(a.malId), a);
+      if (a.slug) mapBySlug.set(a.slug.toLowerCase(), a);
+      if (a.title) mapByTitle.set(cleanTitleForMatch(a.title), a);
+    });
+
+    let itemIndex = 0;
+    for (const item of setItems) {
+      if (options.stopSignalRef?.current) {
+        log('Sync stopped by user signal.', 'warning');
+        break;
+      }
+
+      itemIndex++;
+      stats.totalChecked++;
+      options.onProgress?.(itemIndex, setItems.length, item.title);
+
+      const aniIdStr = item.anilist_id !== null && item.anilist_id !== undefined ? String(item.anilist_id) : '';
+      const malIdStr = item.mal_id !== null && item.mal_id !== undefined ? String(item.mal_id) : '';
+      const itemTitleClean = cleanTitleForMatch(item.title);
+
+      const matchedAnime = (aniIdStr && mapByAniList.get(aniIdStr)) ||
+                         (malIdStr && mapByMal.get(malIdStr)) ||
+                         (itemTitleClean && mapByTitle.get(itemTitleClean)) ||
+                         mapById.get(item.anime_id) ||
+                         mapById.get(`ms_${aniIdStr || item.anime_id}`) ||
+                         null;
+
+      // Skip already added anime as requested by user for /set
+      if (matchedAnime) {
+        stats.skippedByCursor++;
+        log(`~ Skipped existing anime: "${item.title}"`, 'skip');
+        continue;
+      }
+
+      // Create new anime entry
+      const newAnimeId = `yume_${aniIdStr || malIdStr || item.anime_id}`;
+      const generatedSlug = (item.title || newAnimeId)
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim();
+
+      const newAnime: Anime = {
+        id: newAnimeId,
+        title: item.title,
+        nativeTitle: item.title,
+        slug: generatedSlug,
+        aniListId: aniIdStr || undefined,
+        malId: malIdStr || undefined,
+        format: item.format || 'TV',
+        status: item.status || 'Releasing',
+        totalEpisodes: item.total_episodes_available || item.latest_episode_number || 12,
+        episodeDuration: '24 mins',
+        startDate: '',
+        endDate: '',
+        season: item.season || '1',
+        averageScore: '85%',
+        studios: 'YUME Media',
+        genres: ['Anime', 'Action'],
+        poster: item.cover_image || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&q=80&w=600',
+        backdrop: item.banner_image || item.cover_image || '',
+        synopsis: `Watch ${item.title} online with authoritative Hindi Dub and Multi-Server streaming on YORU.`,
+        seasons: [{ id: 's1', name: `Season ${item.season || '1'}`, order: 1 }],
+        published: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        recentlyAddedAt: Date.now()
+      };
+
+      await setDoc(doc(db, 'anime', newAnimeId), newAnime);
+      mapById.set(newAnime.id, newAnime);
+      if (aniIdStr) mapByAniList.set(aniIdStr, newAnime);
+      if (malIdStr) mapByMal.set(malIdStr, newAnime);
+      if (itemTitleClean) mapByTitle.set(itemTitleClean, newAnime);
+
+      stats.newAnimeAdded++;
+      log(`✓ Created new anime entry: "${item.title}"`, 'success');
+
+      // Add episodes
+      const latestEpNum = item.latest_episode_number || 1;
+      const latestEpTitle = item.latest_episode_name || item.latest_episode_title || `Episode ${latestEpNum}`;
+      const primaryEmbedUrl = item.embed_url || item.embed_mal_url || buildYumeEmbedUrl(aniIdStr || malIdStr || item.anime_id, latestEpNum);
+
+      const episodesToSync = new Set<number>();
+      if (latestEpNum) episodesToSync.add(latestEpNum);
+      if (Array.isArray(item.available_episodes)) {
+        item.available_episodes.forEach(num => {
+          if (typeof num === 'number' && num > 0) episodesToSync.add(num);
+        });
+      }
+
+      for (const epNum of Array.from(episodesToSync)) {
+        const isLatest = epNum === latestEpNum;
+        const currentEpTitle = isLatest ? latestEpTitle : `Episode ${epNum}`;
+        const currentEmbedUrl = isLatest
+          ? primaryEmbedUrl
+          : buildYumeEmbedUrl(aniIdStr || malIdStr || item.anime_id, epNum);
+
+        const epDocId = `${newAnimeId}_e${epNum}`;
+        const newEp: Episode = {
+          id: epDocId,
+          animeId: newAnimeId,
+          seasonId: 's1',
+          episodeNumber: epNum,
+          title: currentEpTitle,
+          isFiller: false,
+          servers: [{ serverName: 'YUME', serverType: 'multi', embedLink: currentEmbedUrl }],
+          thumbnailUrl: item.cover_image || newAnime.poster || '',
+          createdAt: Date.now(),
+          published: true
+        };
+
+        await setDoc(doc(db, 'episodes', epDocId), newEp);
+        stats.episodesAdded++;
+        log(`+ Inserted Episode ${epNum} for "${newAnime.title}"`, 'success');
+      }
+    }
+
+    stats.durationMs = Date.now() - startTime;
+    await saveYumeSyncSettings({
+      lastSyncStatus: 'success',
+      lastSyncMessage: `Completed full /set sync. Added ${stats.newAnimeAdded} new anime.`,
+      lastSyncTimestamp: Date.now(),
+      lastSyncStats: stats
+    });
+    log('YUME /set Sync completed successfully.', 'success');
+
+    return { success: true, message: 'Sync complete.', stats };
+  } catch (error: any) {
+    stats.durationMs = Date.now() - startTime;
+    log(`Sync failed: ${error.message}`, 'error');
+    await saveYumeSyncSettings({
+      lastSyncStatus: 'error',
+      lastSyncMessage: `Sync failed: ${error.message}`,
+      lastSyncTimestamp: Date.now(),
+      lastSyncStats: stats
+    });
+    return { success: false, message: error.message, stats };
+  }
+}
+
 /**
  * Main Authoritative Incremental Synchronization Engine
  * Following strict specifications:

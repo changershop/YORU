@@ -21,7 +21,11 @@ import {
   Server,
   Zap,
   CheckCheck,
-  AlertTriangle
+  AlertTriangle,
+  FileJson,
+  Upload,
+  X,
+  FileCode
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { 
@@ -33,6 +37,11 @@ import {
   runYumeIncrementalSync,
   runYumeSetSync,
   resetYumeSyncCursor,
+  syncYumePayloadDirect,
+  isYumeStartSignalValid,
+  isYumeEndSignalValid,
+  getYumePageAnimeCount,
+  extractYumeItems,
   MultiServerSyncSettings,
   MultiServerSyncStats,
   AnimeComparisonResult,
@@ -58,6 +67,19 @@ export const MultiServerSync: React.FC = () => {
   const [logs, setLogs] = useState<SyncLogEntry[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const [syncingSingleId, setSyncingSingleId] = useState<string | null>(null);
+
+  // Direct Payload Import Modal state
+  const [isPayloadModalOpen, setIsPayloadModalOpen] = useState(false);
+  const [payloadInput, setPayloadInput] = useState('');
+  const [isPayloadParsing, setIsPayloadParsing] = useState(false);
+  const [payloadAnalysis, setPayloadAnalysis] = useState<{
+    validJson: boolean;
+    hasStartSignal: boolean;
+    hasEndSignal: boolean;
+    animeCount: number;
+    groupsCount: number;
+    error?: string;
+  } | null>(null);
 
   const stopSignalRef = useRef(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -263,6 +285,88 @@ export const MultiServerSync: React.FC = () => {
     }
   };
 
+  // Inspect and analyze raw JSON payload in real time
+  const handlePayloadInputChange = (raw: string) => {
+    setPayloadInput(raw);
+    if (!raw.trim()) {
+      setPayloadAnalysis(null);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      const isStart = isYumeStartSignalValid(parsed);
+      const isEnd = isYumeEndSignalValid(parsed);
+      const animeCount = getYumePageAnimeCount(parsed);
+      const items = extractYumeItems(parsed);
+      const groupsCount = parsed.total_groups || (Array.isArray(parsed.groups) ? parsed.groups.length : 0);
+
+      setPayloadAnalysis({
+        validJson: true,
+        hasStartSignal: isStart,
+        hasEndSignal: isEnd,
+        animeCount: items.length || animeCount,
+        groupsCount,
+        error: undefined
+      });
+    } catch (e: any) {
+      setPayloadAnalysis({
+        validJson: false,
+        hasStartSignal: false,
+        hasEndSignal: false,
+        animeCount: 0,
+        groupsCount: 0,
+        error: e.message
+      });
+    }
+  };
+
+  // Run direct payload commit to Firestore
+  const handleExecuteDirectPayloadSync = async () => {
+    if (!payloadInput.trim() || isSyncing) return;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(payloadInput);
+    } catch (err: any) {
+      addLog(`JSON Parse Error: ${err.message}`, 'error');
+      return;
+    }
+
+    setIsSyncing(true);
+    setIsPayloadParsing(true);
+    stopSignalRef.current = false;
+    addLog('>>> Starting Direct YUME Stream & Payload Verification <<<', 'info');
+
+    try {
+      const res = await syncYumePayloadDirect(parsed, {
+        onLog: (msg, type) => addLog(msg, type),
+        onProgress: (current, total, title) => {
+          setProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) });
+        },
+        stopSignalRef
+      });
+
+      if (res.success) {
+        addLog(`=== ${res.message} ===`, 'success');
+        setIsPayloadModalOpen(false);
+        setPayloadInput('');
+        setPayloadAnalysis(null);
+      } else {
+        addLog(`=== Payload Sync Issue: ${res.message} ===`, 'error');
+      }
+
+      const updatedSettings = await getMultiServerSyncSettings();
+      setSettings(updatedSettings);
+      await runScan();
+    } catch (err: any) {
+      addLog(`Unexpected direct payload error: ${err.message}`, 'error');
+    } finally {
+      setIsSyncing(false);
+      setIsPayloadParsing(false);
+    }
+  };
+
   // Computed summary counts
   const totalMultiServerAnime = comparisonList.length;
   const totalMultiServerEpisodes = comparisonList.reduce((acc, it) => acc + it.multiserverEpCount, 0);
@@ -345,6 +449,18 @@ export const MultiServerSync: React.FC = () => {
           >
             <RotateCw className="w-3.5 h-3.5 mr-1.5" />
             Reset Cursor
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsPayloadModalOpen(true)}
+            disabled={isScanning || isSyncing}
+            className="border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10"
+            title="Import or paste raw Yume JSON response payload directly"
+          >
+            <FileJson className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
+            Import Raw Payload
           </Button>
 
           {isSyncing ? (
@@ -837,6 +953,141 @@ export const MultiServerSync: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Direct Raw Payload Import Modal */}
+      {isPayloadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/90">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <FileJson className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-white">Import Raw YUME API Payload</h2>
+                  <p className="text-xs text-zinc-400">Paste raw JSON from Yume API to verify stream signals and sync into Firestore</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsPayloadModalOpen(false)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Raw JSON Payload (Supports Grouped, Recent, and Set structures)
+                </label>
+                <textarea
+                  value={payloadInput}
+                  onChange={e => handlePayloadInputChange(e.target.value)}
+                  placeholder={`Paste Yume JSON response here...\ne.g. {\n  "_start": "FETCH_START",\n  "fetch_start": true,\n  "anime_count": 20,\n  "groups": [...],\n  "fetch_complete": true,\n  "_end": "FETCH_END"\n}`}
+                  rows={10}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition resize-none"
+                />
+              </div>
+
+              {/* Analysis & Stream Verification Box */}
+              {payloadAnalysis && (
+                <div className="bg-zinc-950/60 border border-zinc-800 p-3.5 rounded-xl space-y-2.5">
+                  <div className="text-xs font-semibold text-zinc-300 flex items-center justify-between">
+                    <span>Stream Signals & Schema Analysis</span>
+                    {payloadAnalysis.validJson ? (
+                      <span className="text-emerald-400 flex items-center gap-1 text-[11px]">
+                        <Check className="w-3 h-3" /> Valid JSON
+                      </span>
+                    ) : (
+                      <span className="text-rose-400 flex items-center gap-1 text-[11px]">
+                        <AlertCircle className="w-3 h-3" /> Invalid JSON: {payloadAnalysis.error}
+                      </span>
+                    )}
+                  </div>
+
+                  {payloadAnalysis.validJson && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-center">
+                        <span className="text-[10px] text-zinc-400 block">Start Signal</span>
+                        <span className={`text-xs font-bold ${payloadAnalysis.hasStartSignal ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {payloadAnalysis.hasStartSignal ? '✓ Verified' : 'Optional / Missing'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-center">
+                        <span className="text-[10px] text-zinc-400 block">End Signal</span>
+                        <span className={`text-xs font-bold ${payloadAnalysis.hasEndSignal ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {payloadAnalysis.hasEndSignal ? '✓ Verified' : 'Optional / Missing'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-center">
+                        <span className="text-[10px] text-zinc-400 block">Anime Count</span>
+                        <span className="text-xs font-bold text-indigo-400">
+                          {payloadAnalysis.animeCount} Entries
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-center">
+                        <span className="text-[10px] text-zinc-400 block">Groups / Franchises</span>
+                        <span className="text-xs font-bold text-purple-400">
+                          {payloadAnalysis.groupsCount} Groups
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-800 bg-zinc-900/90">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPayloadInput('');
+                  setPayloadAnalysis(null);
+                }}
+                disabled={!payloadInput || isSyncing}
+                className="text-xs border-zinc-800 text-zinc-400 hover:text-white"
+              >
+                Clear
+              </Button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPayloadModalOpen(false)}
+                  className="text-xs border-zinc-800 text-zinc-400 hover:text-white"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleExecuteDirectPayloadSync}
+                  disabled={!payloadAnalysis?.validJson || isSyncing || isPayloadParsing}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-lg shadow-indigo-600/25"
+                >
+                  {isSyncing || isPayloadParsing ? (
+                    <>
+                      <RotateCw className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                      Syncing Payload...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                      Commit to Firestore
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

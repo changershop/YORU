@@ -283,33 +283,58 @@ export interface SpotlightSlide {
 // ==========================================
 // YUME Authoritative Sync Engine Types
 // ==========================================
-export interface YumeRecentItem {
+export interface YumeGroup {
   group_id: string;
-  group_title: string;
+  title: string;
+  slug?: string;
+  is_franchise?: boolean;
+  total_entries?: number;
+  items?: YumeRecentItem[];
+}
+
+export interface YumeRecentItem {
+  group_id?: string;
+  group_title?: string;
   anime_id: string;
   title: string;
-  season: string;
-  anilist_id: number | null;
-  mal_id: number | null;
-  latest_episode_number: number;
-  latest_episode_name: string;
-  latest_episode_title: string;
-  latest_episode_id: string;
-  total_episodes_available: number;
-  available_episodes: number[];
-  status: string;
-  format: string;
-  embed_url: string; // Embed player URL formatted with AniList ID
+  season?: string;
+  anilist_id?: number | null;
+  mal_id?: number | null;
+  latest_episode_number?: number;
+  latest_episode_name?: string;
+  latest_episode_title?: string;
+  latest_episode_id?: string;
+  total_episodes_available?: number;
+  episodes_count?: number;
+  total_episodes?: number;
+  available_episodes?: number[];
+  episodes_available?: number[];
+  status?: string;
+  format?: string;
+  embed_url?: string; // Embed player URL formatted with AniList ID
   embed_mal_url?: string; // Embed player URL formatted with MAL ID (if mal_id exists)
-  cover_image: string; // Optimized CDN-cached image URL
-  banner_image: string;
-  updated_at: number; // Unix timestamp in seconds
+  cover_image?: string; // Optimized CDN-cached image URL
+  banner_image?: string;
+  japanese?: string;
+  synonyms?: string[];
+  aired?: string;
+  premiered?: string;
+  duration?: string;
+  mal_score?: string | number;
+  country?: string;
+  source?: string;
+  genres?: string[];
+  order?: number;
+  type?: string;
+  anime_info?: any;
+  updated_at?: number; // Unix timestamp in seconds
 }
 
 export interface YumePayloadInfo {
   page?: number;
   total_pages?: number;
   anime_count?: number;
+  groups_count?: number;
   total_anime?: number;
   has_next_page?: boolean;
   [key: string]: any;
@@ -320,10 +345,14 @@ export interface YumeSyncResponse {
   fetch_start?: boolean;
   _end?: string;
   fetch_complete?: boolean;
+  fetch_end?: boolean;
+  status?: string;
   anime_count?: number;
+  total_groups?: number;
   info?: YumePayloadInfo;
   sync_cursor?: number;
   cursor?: number;
+  groups?: YumeGroup[];
   recent?: YumeRecentItem[];
   items?: YumeRecentItem[];
   set?: YumeRecentItem[];
@@ -333,6 +362,7 @@ export interface YumeSyncResponse {
   total?: number;
   count?: number;
   timestamp?: number;
+  updated_at?: number;
 }
 
 export interface YumeVerificationResult {

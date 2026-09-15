@@ -837,6 +837,8 @@ export async function syncSingleMultiServerAnime(
 export {
   runYumeIncrementalSync,
   runYumeSetSync,
+  syncYumePayloadDirect,
+  extractYumeItems,
   getYumeSyncSettings,
   saveYumeSyncSettings,
   getYumeSyncCursor,

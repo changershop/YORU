@@ -21,10 +21,13 @@ export const WatchlistButton: React.FC<WatchlistButtonProps> = ({
 }) => {
   const { isInWatchlist, toggleWatchlist, isLoading } = useWatchlist(animeId);
 
+  const buttonVariant = variant === 'icon' ? 'secondary' : variant;
+  const buttonSize = variant === 'icon' ? 'icon' : size;
+
   return (
     <Button 
-      variant={variant} 
-      size={size} 
+      variant={buttonVariant} 
+      size={buttonSize} 
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();

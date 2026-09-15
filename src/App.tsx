@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navigation } from './components/Navigation';
 import { Footer } from './components/Footer';
 import { Landing } from './pages/Landing';
@@ -65,31 +66,33 @@ function AppLayout() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <ScrollToTop />
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          
-          {/* Public App */}
-          <Route path="/*" element={<AppLayout />} />
-          
-          {/* Admin App */}
-          <Route path="/admin" element={<AdminLayout />}>
-             <Route index element={<Dashboard />} />
-             <Route path="multiserver-sync" element={<MultiServerSync />} />
-             <Route path="recent-sync" element={<RecentAnimeSync />} />
-             <Route path="spotlights" element={<SpotlightManager />} />
-             <Route path="reports" element={<ReportManager />} />
-             <Route path="community" element={<CommunityManager />} />
-             <Route path="anime" element={<AnimeList />} />
-             <Route path="anime/new" element={<AnimeEditor />} />
-             <Route path="auto-import" element={<AutoImport />} />
-             <Route path="anime/:id/edit" element={<AnimeEditor />} />
-             <Route path="anime/:id/episodes" element={<EpisodeManager />} />
-          </Route>
-        </Routes>
-      </Router>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <Router>
+          <ScrollToTop />
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            
+            {/* Public App */}
+            <Route path="/*" element={<AppLayout />} />
+            
+            {/* Admin App */}
+            <Route path="/admin" element={<AdminLayout />}>
+               <Route index element={<Dashboard />} />
+               <Route path="multiserver-sync" element={<MultiServerSync />} />
+               <Route path="recent-sync" element={<RecentAnimeSync />} />
+               <Route path="spotlights" element={<SpotlightManager />} />
+               <Route path="reports" element={<ReportManager />} />
+               <Route path="community" element={<CommunityManager />} />
+               <Route path="anime" element={<AnimeList />} />
+               <Route path="anime/new" element={<AnimeEditor />} />
+               <Route path="auto-import" element={<AutoImport />} />
+               <Route path="anime/:id/edit" element={<AnimeEditor />} />
+               <Route path="anime/:id/episodes" element={<EpisodeManager />} />
+            </Route>
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

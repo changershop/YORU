@@ -38,6 +38,39 @@ export function isYumeStartSignalValid(data: any): boolean {
 }
 
 /**
+ * Normalizes and extracts Yume anime items across both grouped and flat response models:
+ * - Grouped responses: data.groups[].items[] (Franchises, Sequal collections, and Single entries)
+ * - Flat responses: data.recent, data.items, data.set, data.data, or top-level array
+ */
+export function extractYumeItems(data: any): YumeRecentItem[] {
+  if (!data || typeof data !== 'object') return [];
+
+  // Grouped collection (e.g., Jujutsu Kaisen, Mushoku Tensei, single_* groups)
+  if (Array.isArray(data.groups)) {
+    const flattened: YumeRecentItem[] = [];
+    for (const grp of data.groups) {
+      if (Array.isArray(grp.items)) {
+        for (const itm of grp.items) {
+          flattened.push({
+            ...itm,
+            group_id: itm.group_id || grp.group_id,
+            group_title: itm.group_title || grp.title
+          });
+        }
+      }
+    }
+    if (flattened.length > 0) return flattened;
+  }
+
+  if (Array.isArray(data.recent)) return data.recent;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.set)) return data.set;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data)) return data;
+  return [];
+}
+
+/**
  * 2. Page Anime Count:
  * Read data.info.anime_count (or data.anime_count) to instantly get the exact count
  * of anime entries available in the current page without having to manually iterate or count the array.
@@ -46,19 +79,19 @@ export function getYumePageAnimeCount(data: any): number {
   if (!data || typeof data !== 'object') return 0;
   if (typeof data.info?.anime_count === 'number') return data.info.anime_count;
   if (typeof data.anime_count === 'number') return data.anime_count;
-  const list = data.recent || data.items || data.set || data.data;
-  return Array.isArray(list) ? list.length : 0;
+  const list = extractYumeItems(data);
+  return list.length;
 }
 
 /**
  * 3. Complete Fetch Verification (End Signal):
  * Before committing data or updating your database, verify:
- * data._end === "FETCH_END" or data.fetch_complete === true
+ * data._end === "FETCH_END" or data.fetch_complete === true or data.fetch_end === true
  * This guarantees the JSON payload was fully received and not cut off mid-transfer by network resets.
  */
 export function isYumeEndSignalValid(data: any): boolean {
   if (!data || typeof data !== 'object') return false;
-  return data._end === 'FETCH_END' || data.fetch_complete === true;
+  return data._end === 'FETCH_END' || data.fetch_complete === true || data.fetch_end === true;
 }
 
 /**
@@ -72,8 +105,8 @@ export function assertYumePayloadComplete(data: any): void {
   if (!data || typeof data !== 'object') {
     throw new Error('Incomplete payload received: missing start or end signal.');
   }
-  const hasStart = data._start === 'FETCH_START' || data.fetch_start === true;
-  const hasEnd = data._end === 'FETCH_END' || data.fetch_complete === true;
+  const hasStart = isYumeStartSignalValid(data);
+  const hasEnd = isYumeEndSignalValid(data);
   if (!hasStart || !hasEnd) {
     throw new Error('Incomplete payload received: missing start or end signal.');
   }
@@ -323,23 +356,13 @@ export async function fetchYumeRecentUpdates(sinceCursor?: number, page: number 
   }
 
   // Normalize API response schema
-  const items: YumeRecentItem[] = Array.isArray(responseData?.recent)
-    ? responseData.recent
-    : Array.isArray(responseData?.items)
-    ? responseData.items
-    : Array.isArray(responseData?.set)
-    ? responseData.set
-    : Array.isArray(responseData?.data)
-    ? responseData.data
-    : Array.isArray(responseData)
-    ? responseData
-    : [];
+  const items: YumeRecentItem[] = extractYumeItems(responseData);
 
   const syncCursor = typeof responseData?.sync_cursor === 'number'
     ? responseData.sync_cursor
     : typeof responseData?.cursor === 'number'
     ? responseData.cursor
-    : undefined;
+    : (typeof responseData?.updated_at === 'number' ? responseData.updated_at : undefined);
 
   const skipped = typeof responseData?.skipped === 'number'
     ? responseData.skipped
@@ -352,9 +375,13 @@ export async function fetchYumeRecentUpdates(sinceCursor?: number, page: number 
     fetch_start: responseData?.fetch_start,
     _end: responseData?._end,
     fetch_complete: responseData?.fetch_complete,
+    fetch_end: responseData?.fetch_end,
+    status: responseData?.status,
     anime_count: animeCount,
+    total_groups: responseData?.total_groups,
     info: responseData?.info,
     sync_cursor: syncCursor,
+    groups: responseData?.groups,
     recent: items,
     items,
     set: items,
@@ -362,7 +389,7 @@ export async function fetchYumeRecentUpdates(sinceCursor?: number, page: number 
     skipped,
     total: typeof responseData?.total === 'number' ? responseData.total : items.length,
     count: animeCount,
-    timestamp: responseData?.timestamp || Math.floor(Date.now() / 1000)
+    timestamp: responseData?.timestamp || responseData?.updated_at || Math.floor(Date.now() / 1000)
   };
 }
 
@@ -507,16 +534,8 @@ export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
     const page1Num = Number(responseData?.info?.page || responseData?.page) || 1;
     log(`Successfully fetched ${page1AnimeCount} anime on page ${page1Num}`, 'info');
 
-    // Normalize response
-    let setItems: YumeRecentItem[] = Array.isArray(responseData?.set)
-      ? responseData.set
-      : Array.isArray(responseData?.items)
-      ? responseData.items
-      : Array.isArray(responseData?.data)
-      ? responseData.data
-      : Array.isArray(responseData)
-      ? responseData
-      : [];
+    // Normalize response using multi-structure extractor (groups, set, items, recent)
+    let setItems: YumeRecentItem[] = extractYumeItems(responseData);
 
     const totalPages = Number(responseData?.info?.total_pages) || 1;
     if (totalPages > 1) {
@@ -527,21 +546,13 @@ export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
         const pageData = await fetchYumeCatalog(p);
         const pStart = isYumeStartSignalValid(pageData);
         const pEnd = isYumeEndSignalValid(pageData);
-        const pMarkers = pageData?._start !== undefined || pageData?.fetch_start !== undefined || pageData?._end !== undefined || pageData?.fetch_complete !== undefined;
+        const pMarkers = pageData?._start !== undefined || pageData?.fetch_start !== undefined || pageData?._end !== undefined || pageData?.fetch_complete !== undefined || pageData?.fetch_end !== undefined;
         if (pMarkers && (!pStart || !pEnd)) {
           throw new Error(`Incomplete payload received on page ${p}: missing start or end signal.`);
         }
         const pCount = getYumePageAnimeCount(pageData);
         log(`Successfully fetched ${pCount} anime on page ${p}`, 'info');
-        const pItems = Array.isArray(pageData?.set)
-          ? pageData.set
-          : Array.isArray(pageData?.items)
-          ? pageData.items
-          : Array.isArray(pageData?.data)
-          ? pageData.data
-          : Array.isArray(pageData)
-          ? pageData
-          : [];
+        const pItems = extractYumeItems(pageData);
         setItems.push(...pItems);
       }
     }
@@ -597,6 +608,7 @@ export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
                          (itemTitleClean && mapByTitle.get(itemTitleClean)) ||
                          mapById.get(item.anime_id) ||
                          mapById.get(`ms_${aniIdStr || item.anime_id}`) ||
+                         mapById.get(`yume_${aniIdStr || malIdStr || item.anime_id}`) ||
                          null;
 
       // Skip already added anime as requested by user for /set
@@ -606,7 +618,7 @@ export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
         continue;
       }
 
-      // Create new anime entry
+      // Create new anime entry with rich metadata
       const newAnimeId = `yume_${aniIdStr || malIdStr || item.anime_id}`;
       const generatedSlug = (item.title || newAnimeId)
         .toLowerCase()
@@ -615,27 +627,47 @@ export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
         .replace(/-+/g, '-')
         .trim();
 
+      const availableEps: number[] = Array.isArray(item.episodes_available)
+        ? item.episodes_available
+        : Array.isArray(item.available_episodes)
+        ? item.available_episodes
+        : [];
+
+      const latestEpNum = item.latest_episode_number || (availableEps.length > 0 ? Math.max(...availableEps) : (item.episodes_count || 1));
+      const totalEpisodesCount = item.total_episodes || item.episodes_count || item.total_episodes_available || latestEpNum || 12;
+
+      const genresList = Array.isArray(item.genres) && item.genres.length > 0
+        ? item.genres
+        : (Array.isArray(item.anime_info?.genres) && item.anime_info.genres.length > 0 ? item.anime_info.genres : ['Anime', 'Action']);
+
+      const rawScore = item.mal_score || item.anime_info?.mal_score;
+      const scoreString = rawScore ? (typeof rawScore === 'number' ? `${Math.round(rawScore * 10)}%` : `${Math.round(parseFloat(rawScore) * 10)}%`) : '85%';
+
+      const seasonName = item.season 
+        ? (item.season.toLowerCase().includes('season') || item.season.toLowerCase().includes('movie') || item.season.toLowerCase().includes('special') ? item.season : `Season ${item.season}`)
+        : (item.format === 'MOVIE' ? 'Movie' : 'Season 1');
+
       const newAnime: Anime = {
         id: newAnimeId,
         title: item.title,
-        nativeTitle: item.title,
+        nativeTitle: item.japanese || item.anime_info?.japanese || item.title,
         slug: generatedSlug,
         aniListId: aniIdStr || undefined,
         malId: malIdStr || undefined,
         format: item.format || 'TV',
-        status: item.status || 'Releasing',
-        totalEpisodes: item.total_episodes_available || item.latest_episode_number || 12,
-        episodeDuration: '24 mins',
-        startDate: '',
+        status: item.status ? (item.status.toUpperCase() === 'FINISHED' ? 'Completed' : 'Releasing') : 'Releasing',
+        totalEpisodes: totalEpisodesCount,
+        episodeDuration: item.duration || item.anime_info?.duration || '24 mins',
+        startDate: item.aired || item.premiered || '',
         endDate: '',
-        season: item.season || '1',
-        averageScore: '85%',
+        season: item.season || (item.format === 'MOVIE' ? 'Movie' : '1'),
+        averageScore: scoreString,
         studios: 'YUME Media',
-        genres: ['Anime', 'Action'],
-        poster: item.cover_image || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&q=80&w=600',
-        backdrop: item.banner_image || item.cover_image || '',
+        genres: genresList,
+        poster: item.cover_image || item.anime_info?.cover_image || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&q=80&w=600',
+        backdrop: item.banner_image || item.anime_info?.banner_image || item.cover_image || '',
         synopsis: `Watch ${item.title} online with authoritative Hindi Dub and Multi-Server streaming on YORU.`,
-        seasons: [{ id: 's1', name: `Season ${item.season || '1'}`, order: 1 }],
+        seasons: [{ id: 's1', name: seasonName, order: 1 }],
         published: true,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -651,24 +683,34 @@ export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
       stats.newAnimeAdded++;
       log(`✓ Created new anime entry: "${item.title}"`, 'success');
 
-      // Add episodes
-      const latestEpNum = item.latest_episode_number || 1;
+      // Add episodes (supporting both episodes_available and available_episodes)
       const latestEpTitle = item.latest_episode_name || item.latest_episode_title || `Episode ${latestEpNum}`;
       const primaryEmbedUrl = item.embed_url || item.embed_mal_url || buildYumeEmbedUrl(aniIdStr || malIdStr || item.anime_id, latestEpNum);
 
       const episodesToSync = new Set<number>();
-      if (latestEpNum) episodesToSync.add(latestEpNum);
-      if (Array.isArray(item.available_episodes)) {
-        item.available_episodes.forEach(num => {
-          if (typeof num === 'number' && num > 0) episodesToSync.add(num);
+      if (Array.isArray(item.episodes_available)) {
+        item.episodes_available.forEach(num => {
+          const n = Number(num);
+          if (n > 0) episodesToSync.add(n);
         });
       }
+      if (Array.isArray(item.available_episodes)) {
+        item.available_episodes.forEach(num => {
+          const n = Number(num);
+          if (n > 0) episodesToSync.add(n);
+        });
+      }
+      if (item.latest_episode_number && Number(item.latest_episode_number) > 0) {
+        episodesToSync.add(Number(item.latest_episode_number));
+      }
 
-      for (const epNum of Array.from(episodesToSync)) {
+      for (const epNum of Array.from(episodesToSync).sort((a, b) => a - b)) {
         const isLatest = epNum === latestEpNum;
-        const currentEpTitle = isLatest ? latestEpTitle : `Episode ${epNum}`;
-        const currentEmbedUrl = isLatest
-          ? primaryEmbedUrl
+        const currentEpTitle = isLatest && (item.latest_episode_name || item.latest_episode_title)
+          ? (item.latest_episode_name || item.latest_episode_title)
+          : `Episode ${epNum}`;
+        const currentEmbedUrl = isLatest && item.embed_url
+          ? item.embed_url
           : buildYumeEmbedUrl(aniIdStr || malIdStr || item.anime_id, epNum);
 
         const epDocId = `${newAnimeId}_e${epNum}`;
@@ -874,27 +916,47 @@ export async function runYumeIncrementalSync(options: YumeSyncOptions = {}): Pro
           .replace(/-+/g, '-')
           .trim();
 
+        const availableEps: number[] = Array.isArray(item.episodes_available)
+          ? item.episodes_available
+          : Array.isArray(item.available_episodes)
+          ? item.available_episodes
+          : [];
+
+        const latestEpNum = item.latest_episode_number || (availableEps.length > 0 ? Math.max(...availableEps) : (item.episodes_count || 1));
+        const totalEpisodesCount = item.total_episodes || item.episodes_count || item.total_episodes_available || latestEpNum || 12;
+
+        const genresList = Array.isArray(item.genres) && item.genres.length > 0
+          ? item.genres
+          : (Array.isArray(item.anime_info?.genres) && item.anime_info.genres.length > 0 ? item.anime_info.genres : ['Anime', 'Action']);
+
+        const rawScore = item.mal_score || item.anime_info?.mal_score;
+        const scoreString = rawScore ? (typeof rawScore === 'number' ? `${Math.round(rawScore * 10)}%` : `${Math.round(parseFloat(rawScore) * 10)}%`) : '85%';
+
+        const seasonName = item.season 
+          ? (item.season.toLowerCase().includes('season') || item.season.toLowerCase().includes('movie') || item.season.toLowerCase().includes('special') ? item.season : `Season ${item.season}`)
+          : (item.format === 'MOVIE' ? 'Movie' : 'Season 1');
+
         const newAnime: Anime = {
           id: newAnimeId,
           title: item.title,
-          nativeTitle: item.title,
+          nativeTitle: item.japanese || item.anime_info?.japanese || item.title,
           slug: generatedSlug,
           aniListId: aniIdStr || undefined,
           malId: malIdStr || undefined,
           format: item.format || 'TV',
-          status: item.status || 'Releasing',
-          totalEpisodes: item.total_episodes_available || item.latest_episode_number || 12,
-          episodeDuration: '24 mins',
-          startDate: '',
+          status: item.status ? (item.status.toUpperCase() === 'FINISHED' ? 'Completed' : 'Releasing') : 'Releasing',
+          totalEpisodes: totalEpisodesCount,
+          episodeDuration: item.duration || item.anime_info?.duration || '24 mins',
+          startDate: item.aired || item.premiered || '',
           endDate: '',
-          season: item.season || '1',
-          averageScore: '85%',
+          season: item.season || (item.format === 'MOVIE' ? 'Movie' : '1'),
+          averageScore: scoreString,
           studios: 'YUME Media',
-          genres: ['Anime', 'Action'],
-          poster: item.cover_image || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&q=80&w=600',
-          backdrop: item.banner_image || item.cover_image || '',
+          genres: genresList,
+          poster: item.cover_image || item.anime_info?.cover_image || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&q=80&w=600',
+          backdrop: item.banner_image || item.anime_info?.banner_image || item.cover_image || '',
           synopsis: `Watch ${item.title} online with authoritative Hindi Dub and Multi-Server streaming on YORU.`,
-          seasons: [{ id: 's1', name: `Season ${item.season || '1'}`, order: 1 }],
+          seasons: [{ id: 's1', name: seasonName, order: 1 }],
           published: true,
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -942,7 +1004,13 @@ export async function runYumeIncrementalSync(options: YumeSyncOptions = {}): Pro
 
       // 4. Authoritative Episode Processing
       // Extract target episodes from YUME recent item
-      const latestEpNum = item.latest_episode_number || 1;
+      const availableEps: number[] = Array.isArray(item.episodes_available)
+        ? item.episodes_available
+        : Array.isArray(item.available_episodes)
+        ? item.available_episodes
+        : [];
+
+      const latestEpNum = item.latest_episode_number || (availableEps.length > 0 ? Math.max(...availableEps) : (item.episodes_count || 1));
       const latestEpTitle = item.latest_episode_name || item.latest_episode_title || `Episode ${latestEpNum}`;
       const primaryEmbedUrl = item.embed_url || item.embed_mal_url || buildYumeEmbedUrl(aniIdStr || malIdStr || item.anime_id, latestEpNum);
 
@@ -954,13 +1022,22 @@ export async function runYumeIncrementalSync(options: YumeSyncOptions = {}): Pro
         existingEpMap.set(ep.episodeNumber, { docId: d.id, episode: { ...ep, id: d.id } });
       });
 
-      // Episode target list: Include latest_episode_number plus any in available_episodes
+      // Episode target list: Include latest_episode_number plus any in episodes_available / available_episodes
       const episodesToSync = new Set<number>();
-      if (latestEpNum) episodesToSync.add(latestEpNum);
+      if (Array.isArray(item.episodes_available)) {
+        item.episodes_available.forEach(num => {
+          const n = Number(num);
+          if (n > 0) episodesToSync.add(n);
+        });
+      }
       if (Array.isArray(item.available_episodes)) {
         item.available_episodes.forEach(num => {
-          if (typeof num === 'number' && num > 0) episodesToSync.add(num);
+          const n = Number(num);
+          if (n > 0) episodesToSync.add(n);
         });
+      }
+      if (item.latest_episode_number && Number(item.latest_episode_number) > 0) {
+        episodesToSync.add(Number(item.latest_episode_number));
       }
 
       for (const epNum of Array.from(episodesToSync)) {
@@ -1095,6 +1172,298 @@ export async function runYumeIncrementalSync(options: YumeSyncOptions = {}): Pro
       message: errorMsg,
       stats,
       newCursor: 0
+    };
+  }
+}
+
+/**
+ * Direct Synchronizer for Raw Yume JSON Payload
+ * Accepts any raw Yume API response (including stream tokens _start/_end, info, groups, items),
+ * validates the stream signals, extracts all anime entries, and commits them to Firestore
+ * with zero redundancy.
+ */
+export async function syncYumePayloadDirect(
+  payload: any,
+  options: YumeSyncOptions = {}
+): Promise<YumeSyncResponse & { success: boolean; message: string; stats: YumeSyncStats }> {
+  const log = (msg: string, type: 'info' | 'success' | 'warning' | 'error' | 'skip' = 'info') => {
+    options.onLog?.(msg, type);
+  };
+
+  const startTime = Date.now();
+  const stats: YumeSyncStats = {
+    totalChecked: 0,
+    newAnimeAdded: 0,
+    existingAnimeUpdated: 0,
+    episodesAdded: 0,
+    episodesUpdated: 0,
+    episodesSkipped: 0,
+    durationMs: 0,
+    skippedByCursor: 0
+  };
+
+  try {
+    log('Processing raw YUME API payload...', 'info');
+
+    // 1. Verify Stream Signals if present
+    const hasMarkers = payload?._start !== undefined || payload?.fetch_start !== undefined || payload?._end !== undefined || payload?.fetch_complete !== undefined || payload?.fetch_end !== undefined;
+    if (hasMarkers) {
+      const isStart = isYumeStartSignalValid(payload);
+      const isEnd = isYumeEndSignalValid(payload);
+      if (!isStart || !isEnd) {
+        throw new Error('Incomplete payload received: missing start or end signal.');
+      }
+      log('✓ Payload stream signals verified (_start and _end / fetch_complete are intact)', 'success');
+    }
+
+    const animeCount = getYumePageAnimeCount(payload);
+    const items = extractYumeItems(payload);
+    log(`Identified ${items.length} anime entries across ${payload.total_groups || payload.info?.groups_count || 'catalog'} groups (Header count: ${animeCount})`, 'info');
+
+    if (items.length === 0) {
+      return {
+        success: true,
+        message: 'Payload contains no anime entries to sync.',
+        stats
+      };
+    }
+
+    // Index local anime
+    log('Indexing local Firestore anime library for matching...', 'info');
+    const animeSnap = await getDocs(collection(db, 'anime'));
+    const localAnimeList: Anime[] = animeSnap.docs.map(d => ({ ...(d.data() as Anime), id: d.id }));
+
+    const mapByAniList = new Map<string, Anime>();
+    const mapByMal = new Map<string, Anime>();
+    const mapBySlug = new Map<string, Anime>();
+    const mapByTitle = new Map<string, Anime>();
+    const mapById = new Map<string, Anime>();
+
+    localAnimeList.forEach(a => {
+      if (a.id) mapById.set(a.id, a);
+      if (a.aniListId) mapByAniList.set(String(a.aniListId), a);
+      if (a.malId) mapByMal.set(String(a.malId), a);
+      if (a.slug) mapBySlug.set(a.slug.toLowerCase(), a);
+      if (a.title) mapByTitle.set(cleanTitleForMatch(a.title), a);
+    });
+
+    let itemIndex = 0;
+    for (const item of items) {
+      if (options.stopSignalRef?.current) {
+        log('Sync stopped by user signal.', 'warning');
+        break;
+      }
+
+      itemIndex++;
+      stats.totalChecked++;
+      options.onProgress?.(itemIndex, items.length, item.title);
+
+      const aniIdStr = item.anilist_id !== null && item.anilist_id !== undefined ? String(item.anilist_id) : '';
+      const malIdStr = item.mal_id !== null && item.mal_id !== undefined ? String(item.mal_id) : '';
+      const itemTitleClean = cleanTitleForMatch(item.title);
+
+      let matchedAnime = (aniIdStr && mapByAniList.get(aniIdStr)) ||
+                         (malIdStr && mapByMal.get(malIdStr)) ||
+                         (itemTitleClean && mapByTitle.get(itemTitleClean)) ||
+                         mapById.get(item.anime_id) ||
+                         mapById.get(`ms_${aniIdStr || item.anime_id}`) ||
+                         mapById.get(`yume_${aniIdStr || malIdStr || item.anime_id}`) ||
+                         null;
+
+      const availableEps: number[] = Array.isArray(item.episodes_available)
+        ? item.episodes_available
+        : Array.isArray(item.available_episodes)
+        ? item.available_episodes
+        : [];
+
+      const latestEpNum = item.latest_episode_number || (availableEps.length > 0 ? Math.max(...availableEps) : (item.episodes_count || 1));
+      const totalEpisodesCount = item.total_episodes || item.episodes_count || item.total_episodes_available || latestEpNum || 12;
+
+      const genresList = Array.isArray(item.genres) && item.genres.length > 0
+        ? item.genres
+        : (Array.isArray(item.anime_info?.genres) && item.anime_info.genres.length > 0 ? item.anime_info.genres : ['Anime', 'Action']);
+
+      const rawScore = item.mal_score || item.anime_info?.mal_score;
+      const scoreString = rawScore ? (typeof rawScore === 'number' ? `${Math.round(rawScore * 10)}%` : `${Math.round(parseFloat(rawScore) * 10)}%`) : '85%';
+
+      const seasonName = item.season 
+        ? (item.season.toLowerCase().includes('season') || item.season.toLowerCase().includes('movie') || item.season.toLowerCase().includes('special') ? item.season : `Season ${item.season}`)
+        : (item.format === 'MOVIE' ? 'Movie' : 'Season 1');
+
+      if (!matchedAnime) {
+        const newAnimeId = `yume_${aniIdStr || malIdStr || item.anime_id}`;
+        const generatedSlug = (item.title || newAnimeId)
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim();
+
+        const newAnime: Anime = {
+          id: newAnimeId,
+          title: item.title,
+          nativeTitle: item.japanese || item.anime_info?.japanese || item.title,
+          slug: generatedSlug,
+          aniListId: aniIdStr || undefined,
+          malId: malIdStr || undefined,
+          format: item.format || 'TV',
+          status: item.status ? (item.status.toUpperCase() === 'FINISHED' ? 'Completed' : 'Releasing') : 'Releasing',
+          totalEpisodes: totalEpisodesCount,
+          episodeDuration: item.duration || item.anime_info?.duration || '24 mins',
+          startDate: item.aired || item.premiered || '',
+          endDate: '',
+          season: item.season || (item.format === 'MOVIE' ? 'Movie' : '1'),
+          averageScore: scoreString,
+          studios: 'YUME Media',
+          genres: genresList,
+          poster: item.cover_image || item.anime_info?.cover_image || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&q=80&w=600',
+          backdrop: item.banner_image || item.anime_info?.banner_image || item.cover_image || '',
+          synopsis: `Watch ${item.title} online with authoritative Hindi Dub and Multi-Server streaming on YORU.`,
+          seasons: [{ id: 's1', name: seasonName, order: 1 }],
+          published: true,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          recentlyAddedAt: Date.now()
+        };
+
+        await setDoc(doc(db, 'anime', newAnimeId), newAnime);
+        matchedAnime = newAnime;
+
+        mapById.set(newAnime.id, newAnime);
+        if (aniIdStr) mapByAniList.set(aniIdStr, newAnime);
+        if (malIdStr) mapByMal.set(malIdStr, newAnime);
+        if (itemTitleClean) mapByTitle.set(itemTitleClean, newAnime);
+
+        stats.newAnimeAdded++;
+        log(`✓ Created new anime entry: "${item.title}" (AniList: ${aniIdStr || 'N/A'}, MAL: ${malIdStr || 'N/A'})`, 'success');
+      } else {
+        let animeNeedsUpdate = false;
+        const animeUpdate: Partial<Anime> = {};
+
+        if (!matchedAnime.aniListId && aniIdStr) {
+          animeUpdate.aniListId = aniIdStr;
+          animeNeedsUpdate = true;
+        }
+        if (!matchedAnime.malId && malIdStr) {
+          animeUpdate.malId = malIdStr;
+          animeNeedsUpdate = true;
+        }
+        if ((!matchedAnime.poster || matchedAnime.poster.includes('unsplash')) && item.cover_image) {
+          animeUpdate.poster = item.cover_image;
+          animeNeedsUpdate = true;
+        }
+        if (!matchedAnime.backdrop && item.banner_image) {
+          animeUpdate.backdrop = item.banner_image;
+          animeNeedsUpdate = true;
+        }
+
+        if (animeNeedsUpdate) {
+          animeUpdate.updatedAt = Date.now();
+          await updateDoc(doc(db, 'anime', matchedAnime.id), animeUpdate);
+          stats.existingAnimeUpdated++;
+          log(`~ Updated metadata for existing anime: "${matchedAnime.title}"`, 'info');
+        }
+      }
+
+      // Episodes Sync
+      const latestEpTitle = item.latest_episode_name || item.latest_episode_title || `Episode ${latestEpNum}`;
+      const primaryEmbedUrl = item.embed_url || item.embed_mal_url || buildYumeEmbedUrl(aniIdStr || malIdStr || item.anime_id, latestEpNum);
+
+      const epSnap = await getDocs(query(collection(db, 'episodes'), where('animeId', '==', matchedAnime.id)));
+      const existingEpMap = new Map<number, { docId: string; episode: Episode }>();
+      epSnap.docs.forEach(d => {
+        const ep = d.data() as Episode;
+        existingEpMap.set(ep.episodeNumber, { docId: d.id, episode: { ...ep, id: d.id } });
+      });
+
+      const episodesToSync = new Set<number>();
+      if (Array.isArray(item.episodes_available)) {
+        item.episodes_available.forEach(num => {
+          const n = Number(num);
+          if (n > 0) episodesToSync.add(n);
+        });
+      }
+      if (Array.isArray(item.available_episodes)) {
+        item.available_episodes.forEach(num => {
+          const n = Number(num);
+          if (n > 0) episodesToSync.add(n);
+        });
+      }
+      if (item.latest_episode_number && Number(item.latest_episode_number) > 0) {
+        episodesToSync.add(Number(item.latest_episode_number));
+      }
+
+      for (const epNum of Array.from(episodesToSync).sort((a, b) => a - b)) {
+        const isLatest = epNum === latestEpNum;
+        const currentEpTitle = isLatest && (item.latest_episode_name || item.latest_episode_title)
+          ? (item.latest_episode_name || item.latest_episode_title)
+          : `Episode ${epNum}`;
+        const currentEmbedUrl = isLatest && item.embed_url
+          ? item.embed_url
+          : buildYumeEmbedUrl(aniIdStr || malIdStr || item.anime_id, epNum);
+
+        const existingRecord = existingEpMap.get(epNum);
+
+        if (!existingRecord) {
+          const epDocId = `${matchedAnime.id}_e${epNum}`;
+          const newEp: Episode = {
+            id: epDocId,
+            animeId: matchedAnime.id,
+            seasonId: 's1',
+            episodeNumber: epNum,
+            title: currentEpTitle,
+            isFiller: false,
+            servers: [{ serverName: 'YUME', serverType: 'multi', embedLink: currentEmbedUrl }],
+            thumbnailUrl: item.cover_image || matchedAnime.poster || '',
+            createdAt: Date.now(),
+            published: true
+          };
+
+          await setDoc(doc(db, 'episodes', epDocId), newEp);
+          existingEpMap.set(epNum, { docId: epDocId, episode: newEp });
+          stats.episodesAdded++;
+          log(`+ Inserted Episode ${epNum} for "${matchedAnime.title}" [YUME Authoritative]`, 'success');
+        } else {
+          const { docId, episode } = existingRecord;
+          const updatedServers = mergeAuthoritativeYumeServer(episode.servers || [], currentEmbedUrl);
+          const epUpdate: Partial<Episode> = { servers: updatedServers };
+
+          if (isLatest && latestEpTitle && latestEpTitle !== `Episode ${epNum}`) {
+            epUpdate.title = latestEpTitle;
+          }
+          if (!episode.thumbnailUrl && item.cover_image) {
+            epUpdate.thumbnailUrl = item.cover_image;
+          }
+
+          await updateDoc(doc(db, 'episodes', docId), epUpdate);
+          stats.episodesUpdated++;
+        }
+      }
+    }
+
+    stats.durationMs = Date.now() - startTime;
+    await saveYumeSyncSettings({
+      lastSyncStatus: 'success',
+      lastSyncMessage: `Direct payload sync: ${items.length} anime entries (${stats.episodesAdded} added, ${stats.episodesUpdated} updated).`,
+      lastSyncTimestamp: Date.now(),
+      lastSyncStats: stats
+    });
+
+    log(`Direct sync completed in ${(stats.durationMs / 1000).toFixed(1)}s: ${stats.newAnimeAdded} new anime added, ${stats.episodesAdded} episodes added.`, 'success');
+
+    return {
+      success: true,
+      message: `Payload sync successful: ${stats.newAnimeAdded} new anime added, ${stats.existingAnimeUpdated} anime updated, ${stats.episodesAdded} episodes added.`,
+      stats
+    };
+  } catch (err: any) {
+    stats.durationMs = Date.now() - startTime;
+    const errorMsg = err.message || 'Direct sync failed';
+    log(`Direct sync error: ${errorMsg}`, 'error');
+    return {
+      success: false,
+      message: errorMsg,
+      stats
     };
   }
 }

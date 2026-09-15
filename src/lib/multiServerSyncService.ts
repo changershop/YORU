@@ -306,6 +306,7 @@ export interface SyncOptions {
   filterMode?: 'all' | 'missing_only' | 'new_anime_only';
   specificAnimeIds?: string[];
   shouldStop?: () => boolean;
+  limit?: number;
 }
 
 /**
@@ -392,7 +393,11 @@ export async function runMultiServerSetSync(options: SyncOptions = {}): Promise<
 
     addLog(`Found ${existingAnimeList.length} local anime in database. Starting incremental episode comparison...`, 'info');
 
-    const totalToProcess = targetItems.length;
+    let totalToProcess = targetItems.length;
+    if (options.limit && options.limit > 0 && options.limit < totalToProcess) {
+      totalToProcess = options.limit;
+      addLog(`Limiting scan to ${options.limit} anime as requested.`, 'info');
+    }
 
     for (let i = 0; i < totalToProcess; i++) {
       if (options.shouldStop?.()) {

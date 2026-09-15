@@ -52,6 +52,7 @@ export const MultiServerSync: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [comparisonList, setComparisonList] = useState<AnimeComparisonResult[]>([]);
   const [filterQuery, setFilterQuery] = useState('');
+  const [scanLimit, setScanLimit] = useState<number | ''>('');
   const [activeTab, setActiveTab] = useState<'all' | 'missing' | 'new_anime' | 'synced'>('all');
   const [progress, setProgress] = useState({ current: 0, total: 0, percent: 0 });
   const [logs, setLogs] = useState<SyncLogEntry[]>([]);
@@ -135,6 +136,7 @@ export const MultiServerSync: React.FC = () => {
     try {
       const res = await runMultiServerSetSync({
         filterMode: mode,
+        limit: typeof scanLimit === 'number' && scanLimit > 0 ? scanLimit : undefined,
         onLog: entry => setLogs(prev => [...prev.slice(-400), entry]),
         onProgress: (current, total, percent) => {
           setProgress({ current, total, percent });
@@ -376,6 +378,16 @@ export const MultiServerSync: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap text-xs">
+          <div className="bg-black/40 border border-zinc-700/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+            <span className="text-zinc-400">Scan Limit:</span>
+            <input 
+              type="number"
+              placeholder="Unlimited"
+              value={scanLimit}
+              onChange={(e) => setScanLimit(e.target.value ? Number(e.target.value) : '')}
+              className="bg-zinc-900 border border-zinc-700 text-emerald-400 font-medium text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500 w-24"
+            />
+          </div>
           <div className="bg-black/40 border border-zinc-700/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
             <Clock className="w-3.5 h-3.5 text-zinc-400" />
             <span className="text-zinc-400">Sync Cursor:</span>

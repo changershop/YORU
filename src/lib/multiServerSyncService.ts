@@ -581,15 +581,16 @@ export async function runMultiServerSetSync(options: SyncOptions = {}): Promise<
         // Add all episodes for this new anime with AL, MAL, and Multi servers
         for (const epNum of msEpisodes) {
           const epDocId = `${newAnimeId}_s1_${epNum}`;
+          const epDetail = item.episode_details?.find(d => d.number === epNum);
           const episodeData: Episode = {
             id: epDocId,
             animeId: newAnimeId,
             seasonId: 's1',
             episodeNumber: epNum,
-            title: `Episode ${epNum}`,
+            title: epDetail?.title || `Episode ${epNum}`,
             isFiller: false,
             servers: buildEpisodeServers(epNum),
-            thumbnailUrl: item.backdrop_image || item.cover_image || '',
+            thumbnailUrl: epDetail?.thumbnail || item.backdrop_image || item.cover_image || '',
             createdAt: Date.now(),
             published: true
           };
@@ -662,15 +663,16 @@ export async function runMultiServerSetSync(options: SyncOptions = {}): Promise<
           if (!existingEp) {
             // SUB-CASE 2A: EPISODE DOES NOT EXIST AT ALL LOCALLY (e.g. had 2, now 20)
             const epDocId = `${matchedAnime.id}_s1_${epNum}`;
+            const epDetail = item.episode_details?.find(d => d.number === epNum);
             const episodeData: Episode = {
               id: epDocId,
               animeId: matchedAnime.id,
               seasonId: 's1',
               episodeNumber: epNum,
-              title: `Episode ${epNum}`,
+              title: epDetail?.title || `Episode ${epNum}`,
               isFiller: false,
               servers: neededServers,
-              thumbnailUrl: matchedAnime.backdrop || matchedAnime.poster || item.cover_image || '',
+              thumbnailUrl: epDetail?.thumbnail || matchedAnime.backdrop || matchedAnime.poster || item.cover_image || '',
               createdAt: Date.now(),
               published: true
             };

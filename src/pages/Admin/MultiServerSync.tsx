@@ -196,35 +196,8 @@ export const MultiServerSync: React.FC = () => {
     }
   };
 
-  const handleRunSetSync = async () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
-    stopSignalRef.current = false;
-    addLog('>>> Starting YUME /set Sync (Skip Exists) <<<', 'info');
-
-    try {
-      const res = await runYumeSetSync({
-        onLog: (msg, type) => addLog(msg, type),
-        onProgress: (current, total, title) => {
-          setProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) });
-        },
-        stopSignalRef
-      });
-
-      if (res.success) {
-        addLog(`=== ${res.message} ===`, 'success');
-      } else {
-        addLog(`=== Sync issue: ${res.message} ===`, 'error');
-      }
-
-      const updatedSettings = await getMultiServerSyncSettings();
-      setSettings(updatedSettings);
-      await runScan();
-    } catch (err: any) {
-      addLog(`Unexpected sync failure: ${err.message}`, 'error');
-    } finally {
-      setIsSyncing(false);
-    }
+  const handleRunSetSync = () => {
+    handleStartSync('new_anime_only');
   };
 
   const handleResetCursor = async () => {

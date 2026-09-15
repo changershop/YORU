@@ -24,6 +24,7 @@ export interface MultiServerItem {
   anilist_id: number | string;
   mal_id: number | string;
   episodes_available: number[];
+  episode_details?: any[];
   episodes_count: number;
   total_episodes?: number;
   cover_image: string;
@@ -134,20 +135,30 @@ export async function fetchMultiServerRawDataset(): Promise<{ groups: MultiServe
 
     // Map episodes by animeId
     const episodesByAnimeId: Record<string, number[]> = {};
+    const episodeDetailsByAnimeId: Record<string, any[]> = {};
     episodesSnap.docs.forEach(docSnap => {
       const data = docSnap.data();
       if (!data.hidden && data.animeId && data.number !== undefined) {
         const aId = String(data.animeId);
-        if (!episodesByAnimeId[aId]) episodesByAnimeId[aId] = [];
+        if (!episodesByAnimeId[aId]) {
+          episodesByAnimeId[aId] = [];
+          episodeDetailsByAnimeId[aId] = [];
+        }
         const num = Number(data.number);
         if (!episodesByAnimeId[aId].includes(num)) {
           episodesByAnimeId[aId].push(num);
+          episodeDetailsByAnimeId[aId].push({
+            number: num,
+            title: data.title || `Episode ${num}`,
+            thumbnail: data.thumbnailUrl || ''
+          });
         }
       }
     });
 
     Object.keys(episodesByAnimeId).forEach(aId => {
       episodesByAnimeId[aId].sort((a, b) => a - b);
+      episodeDetailsByAnimeId[aId].sort((a, b) => a.number - b.number);
     });
 
     // Map anime docs by id
@@ -175,6 +186,7 @@ export async function fetchMultiServerRawDataset(): Promise<{ groups: MultiServe
 
         const animeData = animeById[aId] || {};
         const epNums = episodesByAnimeId[aId] || [];
+        const epDetails = episodeDetailsByAnimeId[aId] || [];
         const itemTitle = it.customTitle ||
           animeData.title?.english ||
           animeData.title?.romaji ||
@@ -210,6 +222,7 @@ export async function fetchMultiServerRawDataset(): Promise<{ groups: MultiServe
           status: itemStatus,
           format: animeData.format || (it.type === 'Movie' ? 'MOVIE' : 'TV'),
           episodes_available: epNums,
+          episode_details: epDetails,
           episodes_count: epNums.length,
           total_episodes: itemEpisodesCount,
           cover_image: itemCover,
@@ -256,6 +269,7 @@ export async function fetchMultiServerRawDataset(): Promise<{ groups: MultiServe
       const aId = String(animeData.id);
       if (!franchiseCoveredAnimeIds.has(aId)) {
         const epNums = episodesByAnimeId[aId] || [];
+        const epDetails = episodeDetailsByAnimeId[aId] || [];
         const animeTitle = animeData.title?.english ||
           animeData.title?.romaji ||
           animeData.title?.native ||
@@ -286,6 +300,7 @@ export async function fetchMultiServerRawDataset(): Promise<{ groups: MultiServe
           status: itemStatus,
           format: animeData.format || 'TV',
           episodes_available: epNums,
+          episode_details: epDetails,
           episodes_count: epNums.length,
           total_episodes: itemEpisodesCount,
           cover_image: itemCover,

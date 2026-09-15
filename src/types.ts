@@ -306,15 +306,44 @@ export interface YumeRecentItem {
   updated_at: number; // Unix timestamp in seconds
 }
 
+export interface YumePayloadInfo {
+  page?: number;
+  total_pages?: number;
+  anime_count?: number;
+  total_anime?: number;
+  has_next_page?: boolean;
+  [key: string]: any;
+}
+
 export interface YumeSyncResponse {
+  _start?: string;
+  fetch_start?: boolean;
+  _end?: string;
+  fetch_complete?: boolean;
+  anime_count?: number;
+  info?: YumePayloadInfo;
   sync_cursor?: number;
+  cursor?: number;
   recent?: YumeRecentItem[];
   items?: YumeRecentItem[];
+  set?: YumeRecentItem[];
   data?: YumeRecentItem[];
   skipped?: number;
+  skipped_count?: number;
   total?: number;
   count?: number;
   timestamp?: number;
+}
+
+export interface YumeVerificationResult {
+  isValid: boolean;
+  hasStartSignal: boolean;
+  hasEndSignal: boolean;
+  animeCount: number;
+  page: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+  error?: string;
 }
 
 export interface YumeSyncStats {

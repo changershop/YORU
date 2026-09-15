@@ -228,7 +228,8 @@ async function startServer() {
       if (typeof targetPath === 'string' && targetPath.startsWith('/')) {
         targetPath = targetPath.substring(1);
       }
-      const targetUrl = new URL(`https://yumestream.pages.dev/api/${targetPath}`);
+      const baseRemote = process.env.YUME_API_URL ? process.env.YUME_API_URL.replace(/\/$/, '') : 'https://yumestream.pages.dev';
+      const targetUrl = new URL(baseRemote.endsWith('/api') ? `${baseRemote}/${targetPath}` : `${baseRemote}/api/${targetPath}`);
       for (const [key, value] of Object.entries(req.query)) {
         targetUrl.searchParams.append(key, String(value));
       }
@@ -239,7 +240,8 @@ async function startServer() {
         response = await fetch(targetUrl.toString());
       } catch (fetchErr) {
         // Fallback to legacy domain if yumestream isn't responding
-        const fallbackUrl = new URL(`https://multiserver.pages.dev/api/${targetPath}`);
+        const fallbackBase = 'https://multiserver.pages.dev';
+        const fallbackUrl = new URL(fallbackBase.endsWith('/api') ? `${fallbackBase}/${targetPath}` : `${fallbackBase}/api/${targetPath}`);
         for (const [key, value] of Object.entries(req.query)) {
           fallbackUrl.searchParams.append(key, String(value));
         }

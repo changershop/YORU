@@ -833,7 +833,7 @@ export async function syncSingleMultiServerAnime(
   });
 }
 
-// Re-export Authoritative YUME Incremental Sync Engine
+// Re-export Authoritative YUME Incremental Sync Engine & Stream Verification Helpers
 export {
   runYumeIncrementalSync,
   runYumeSetSync,
@@ -847,6 +847,11 @@ export {
   fetchYumeCatalog,
   fetchYumeAnimeById,
   buildYumeEmbedUrl,
-  mergeAuthoritativeYumeServer
+  mergeAuthoritativeYumeServer,
+  isYumeStartSignalValid,
+  isYumeEndSignalValid,
+  getYumePageAnimeCount,
+  verifyYumePayload,
+  assertYumePayloadComplete
 } from './yumeSyncService';
 

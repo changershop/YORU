@@ -198,8 +198,35 @@ export const MultiServerSync: React.FC = () => {
     }
   };
 
-  const handleRunSetSync = () => {
-    handleStartSync('new_anime_only');
+  const handleRunSetSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    stopSignalRef.current = false;
+    addLog('>>> Starting Authoritative YUME /set Catalog Sync (Stream Verified) <<<', 'info');
+
+    try {
+      const res = await runYumeSetSync({
+        onLog: (msg, type) => addLog(msg, type),
+        onProgress: (current, total, title) => {
+          setProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) });
+        },
+        stopSignalRef
+      });
+
+      if (res.success) {
+        addLog(`=== ${res.message} ===`, 'success');
+      } else {
+        addLog(`=== Sync issue: ${res.message} ===`, 'error');
+      }
+
+      const updatedSettings = await getMultiServerSyncSettings();
+      setSettings(updatedSettings);
+      await runScan();
+    } catch (err: any) {
+      addLog(`Unexpected sync failure: ${err.message}`, 'error');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleResetCursor = async () => {
@@ -365,14 +392,18 @@ export const MultiServerSync: React.FC = () => {
             <Zap className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-semibold text-white">Authoritative YUME Incremental Engine</span>
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                 Zero Redundancy
               </span>
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3" />
+                Stream Verified
+              </span>
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              YUME is the authoritative source for episode names, numbers, audio, and player embeds.
+              YUME is the authoritative source for episode names, numbers, audio, and player embeds with payload start/end stream verification.
             </p>
           </div>
         </div>

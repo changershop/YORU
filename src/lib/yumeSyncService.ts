@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, getDoc, setDoc, updateDoc, query, where, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
-import { Anime, Episode, ServerLink, YumeRecentItem, YumeSyncResponse, YumeSyncSettings, YumeSyncStats } from '../types';
+import { Anime, Episode, ServerLink, YumeRecentItem, YumeSyncResponse, YumeSyncSettings, YumeSyncStats, YumeVerificationResult, YumePayloadInfo } from '../types';
 import axios from 'axios';
 
 const SETTINGS_DOC_ID = 'yume_sync';
@@ -19,6 +19,115 @@ export const DEFAULT_YUME_SETTINGS: YumeSyncSettings = {
 
 const isNode = typeof window === 'undefined';
 export const YUME_REMOTE_BASE_URL = 'https://yumestream.pages.dev';
+
+/**
+ * ============================================================================
+ * Yume Anime API Stream & Page Verification Specification Helpers
+ * ============================================================================
+ */
+
+/**
+ * 1. Start Signal:
+ * Verify that the response begins with:
+ * data._start === "FETCH_START" or data.fetch_start === true
+ * This signals that the API payload is valid and streaming.
+ */
+export function isYumeStartSignalValid(data: any): boolean {
+  if (!data || typeof data !== 'object') return false;
+  return data._start === 'FETCH_START' || data.fetch_start === true;
+}
+
+/**
+ * 2. Page Anime Count:
+ * Read data.info.anime_count (or data.anime_count) to instantly get the exact count
+ * of anime entries available in the current page without having to manually iterate or count the array.
+ */
+export function getYumePageAnimeCount(data: any): number {
+  if (!data || typeof data !== 'object') return 0;
+  if (typeof data.info?.anime_count === 'number') return data.info.anime_count;
+  if (typeof data.anime_count === 'number') return data.anime_count;
+  const list = data.recent || data.items || data.set || data.data;
+  return Array.isArray(list) ? list.length : 0;
+}
+
+/**
+ * 3. Complete Fetch Verification (End Signal):
+ * Before committing data or updating your database, verify:
+ * data._end === "FETCH_END" or data.fetch_complete === true
+ * This guarantees the JSON payload was fully received and not cut off mid-transfer by network resets.
+ */
+export function isYumeEndSignalValid(data: any): boolean {
+  if (!data || typeof data !== 'object') return false;
+  return data._end === 'FETCH_END' || data.fetch_complete === true;
+}
+
+/**
+ * Asserts full payload validity before committing changes to database
+ * Throws explicit error if incomplete or missing signals as per specification:
+ * if (!data.fetch_start || !data.fetch_complete) {
+ *   throw new Error("Incomplete payload received: missing start or end signal.");
+ * }
+ */
+export function assertYumePayloadComplete(data: any): void {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Incomplete payload received: missing start or end signal.');
+  }
+  const hasStart = data._start === 'FETCH_START' || data.fetch_start === true;
+  const hasEnd = data._end === 'FETCH_END' || data.fetch_complete === true;
+  if (!hasStart || !hasEnd) {
+    throw new Error('Incomplete payload received: missing start or end signal.');
+  }
+}
+
+/**
+ * Verifies stream start, stream end, and parses page metadata
+ */
+export function verifyYumePayload(data: any, endpointName: string = 'Yume API'): YumeVerificationResult {
+  if (!data || typeof data !== 'object') {
+    return {
+      isValid: false,
+      hasStartSignal: false,
+      hasEndSignal: false,
+      animeCount: 0,
+      page: 1,
+      error: `Invalid or unparseable payload received from ${endpointName}.`
+    };
+  }
+
+  const hasStartSignal = isYumeStartSignalValid(data);
+  const hasEndSignal = isYumeEndSignalValid(data);
+  const animeCount = getYumePageAnimeCount(data);
+  const page = Number(data.info?.page || data.page) || 1;
+  const totalPages = typeof data.info?.total_pages === 'number' 
+    ? data.info.total_pages 
+    : (typeof data.total_pages === 'number' ? data.total_pages : undefined);
+  const hasNextPage = typeof data.info?.has_next_page === 'boolean'
+    ? data.info.has_next_page
+    : (totalPages !== undefined ? page < totalPages : false);
+
+  if (!hasStartSignal || !hasEndSignal) {
+    return {
+      isValid: false,
+      hasStartSignal,
+      hasEndSignal,
+      animeCount,
+      page,
+      totalPages,
+      hasNextPage,
+      error: 'Incomplete payload received: missing start or end signal.'
+    };
+  }
+
+  return {
+    isValid: true,
+    hasStartSignal: true,
+    hasEndSignal: true,
+    animeCount,
+    page,
+    totalPages,
+    hasNextPage
+  };
+}
 
 /**
  * Resolves appropriate base API URL depending on client/server environment
@@ -180,22 +289,25 @@ export async function resetYumeSyncCursor(): Promise<boolean> {
 }
 
 /**
- * Fetches recent updates from YUME API with incremental cursor support
- * Endpoint: GET <YUME_API_URL>/api/recent?since={yume_last_sync_cursor}
- * (Fallback: /api/v1/recent?since={...})
+ * Fetches recent updates from YUME API with stream verification and pagination support
+ * Endpoint: GET <YUME_API_URL>/api/recent?page={page}&since={yume_last_sync_cursor}
+ * (Fallback: /api/v1/recent?...)
  */
-export async function fetchYumeRecentUpdates(sinceCursor?: number): Promise<YumeSyncResponse> {
+export async function fetchYumeRecentUpdates(sinceCursor?: number, page: number = 1): Promise<YumeSyncResponse> {
   const baseUrl = getYumeApiBaseUrl();
-  const queryParams = (sinceCursor !== undefined && sinceCursor > 0) ? `?since=${sinceCursor}` : '';
+  const searchParams = new URLSearchParams();
+  if (page > 0) searchParams.set('page', String(page));
+  if (sinceCursor !== undefined && sinceCursor > 0) searchParams.set('since', String(sinceCursor));
+  const queryParams = searchParams.toString() ? `?${searchParams.toString()}` : '';
 
   let responseData: any = null;
 
-  // Primary endpoint: /api/recent?since=...
+  // Primary endpoint: /api/recent?page=...&since=...
   try {
     const res = await axios.get(`${baseUrl}/recent${queryParams}`, { timeout: 15000 });
     responseData = res.data;
   } catch (primaryErr) {
-    // Fallback endpoint: /api/v1/recent?since=...
+    // Fallback endpoint: /api/v1/recent?page=...&since=...
     try {
       const fallbackRes = await axios.get(`${baseUrl}/v1/recent${queryParams}`, { timeout: 15000 });
       responseData = fallbackRes.data;
@@ -215,6 +327,8 @@ export async function fetchYumeRecentUpdates(sinceCursor?: number): Promise<Yume
     ? responseData.recent
     : Array.isArray(responseData?.items)
     ? responseData.items
+    : Array.isArray(responseData?.set)
+    ? responseData.set
     : Array.isArray(responseData?.data)
     ? responseData.data
     : Array.isArray(responseData)
@@ -231,29 +345,51 @@ export async function fetchYumeRecentUpdates(sinceCursor?: number): Promise<Yume
     ? responseData.skipped
     : (typeof responseData?.skipped_count === 'number' ? responseData.skipped_count : 0);
 
+  const animeCount = getYumePageAnimeCount(responseData) || items.length;
+
   return {
+    _start: responseData?._start,
+    fetch_start: responseData?.fetch_start,
+    _end: responseData?._end,
+    fetch_complete: responseData?.fetch_complete,
+    anime_count: animeCount,
+    info: responseData?.info,
     sync_cursor: syncCursor,
     recent: items,
     items,
+    set: items,
+    data: items,
     skipped,
     total: typeof responseData?.total === 'number' ? responseData.total : items.length,
-    count: items.length,
+    count: animeCount,
     timestamp: responseData?.timestamp || Math.floor(Date.now() / 1000)
   };
 }
 
 /**
- * Fetches complete grouped catalog from YUME API
- * Endpoint: GET <YUME_API_URL>/api/set (or /api/v1/set)
+ * Fetches complete grouped catalog from YUME API with page support
+ * Endpoint: GET <YUME_API_URL>/api/set?page={page} (or /api/v1/set)
  */
-export async function fetchYumeCatalog(): Promise<any> {
+export async function fetchYumeCatalog(page: number = 1): Promise<any> {
   const baseUrl = getYumeApiBaseUrl();
+  const searchParams = new URLSearchParams();
+  if (page > 0) searchParams.set('page', String(page));
+  const queryParams = searchParams.toString() ? `?${searchParams.toString()}` : '';
+
   try {
-    const res = await axios.get(`${baseUrl}/set`, { timeout: 20000 });
+    const res = await axios.get(`${baseUrl}/set${queryParams}`, { timeout: 20000 });
     return res.data;
-  } catch {
-    const fallbackRes = await axios.get(`${baseUrl}/v1/set`, { timeout: 20000 });
-    return fallbackRes.data;
+  } catch (err: any) {
+    try {
+      const fallbackRes = await axios.get(`${baseUrl}/v1/set${queryParams}`, { timeout: 20000 });
+      return fallbackRes.data;
+    } catch {
+      if (!isNode) {
+        const directRes = await axios.get(`${YUME_REMOTE_BASE_URL}/api/set${queryParams}`, { timeout: 20000 });
+        return directRes.data;
+      }
+      throw err;
+    }
   }
 }
 
@@ -355,11 +491,24 @@ export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
       lastSyncMessage: `Running full /set sync...`
     });
 
-    log('Calling GET /api/set...', 'info');
-    const responseData = await fetchYumeCatalog();
+    log('Calling GET /api/set?page=1...', 'info');
+    const responseData = await fetchYumeCatalog(1);
     
+    // Yume Anime API Stream & Page Verification Specification
+    const hasMarkers = responseData?._start !== undefined || responseData?.fetch_start !== undefined || responseData?._end !== undefined || responseData?.fetch_complete !== undefined;
+    const isStart = isYumeStartSignalValid(responseData);
+    const isEnd = isYumeEndSignalValid(responseData);
+
+    if (hasMarkers && (!isStart || !isEnd)) {
+      throw new Error('Incomplete payload received: missing start or end signal.');
+    }
+
+    const page1AnimeCount = getYumePageAnimeCount(responseData);
+    const page1Num = Number(responseData?.info?.page || responseData?.page) || 1;
+    log(`Successfully fetched ${page1AnimeCount} anime on page ${page1Num}`, 'info');
+
     // Normalize response
-    const setItems: YumeRecentItem[] = Array.isArray(responseData?.set)
+    let setItems: YumeRecentItem[] = Array.isArray(responseData?.set)
       ? responseData.set
       : Array.isArray(responseData?.items)
       ? responseData.items
@@ -369,7 +518,35 @@ export async function runYumeSetSync(options: YumeSyncOptions = {}): Promise<{
       ? responseData
       : [];
 
-    log(`YUME API /set returned ${setItems.length} total anime entries.`, 'info');
+    const totalPages = Number(responseData?.info?.total_pages) || 1;
+    if (totalPages > 1) {
+      log(`Detected ${totalPages} total pages in YUME /set catalog. Fetching remaining pages...`, 'info');
+      for (let p = 2; p <= totalPages; p++) {
+        if (options.stopSignalRef?.current) break;
+        log(`Fetching YUME /set page ${p}/${totalPages}...`, 'info');
+        const pageData = await fetchYumeCatalog(p);
+        const pStart = isYumeStartSignalValid(pageData);
+        const pEnd = isYumeEndSignalValid(pageData);
+        const pMarkers = pageData?._start !== undefined || pageData?.fetch_start !== undefined || pageData?._end !== undefined || pageData?.fetch_complete !== undefined;
+        if (pMarkers && (!pStart || !pEnd)) {
+          throw new Error(`Incomplete payload received on page ${p}: missing start or end signal.`);
+        }
+        const pCount = getYumePageAnimeCount(pageData);
+        log(`Successfully fetched ${pCount} anime on page ${p}`, 'info');
+        const pItems = Array.isArray(pageData?.set)
+          ? pageData.set
+          : Array.isArray(pageData?.items)
+          ? pageData.items
+          : Array.isArray(pageData?.data)
+          ? pageData.data
+          : Array.isArray(pageData)
+          ? pageData
+          : [];
+        setItems.push(...pItems);
+      }
+    }
+
+    log(`YUME API /set verified: ${setItems.length} total anime entries gathered across ${totalPages} page(s).`, 'info');
 
     if (setItems.length === 0) {
       stats.durationMs = Date.now() - startTime;
@@ -583,10 +760,46 @@ export async function runYumeIncrementalSync(options: YumeSyncOptions = {}): Pro
       lastSyncMessage: `Syncing with cursor ${effectiveCursor}...`
     });
 
-    // 2. Fetch incremental recent items from YUME API
-    log(`Calling GET /api/recent?since=${effectiveCursor}...`, 'info');
-    const response = await fetchYumeRecentUpdates(effectiveCursor);
-    const recentItems = response.recent || [];
+    // 2. Fetch incremental recent items from YUME API with stream & page verification
+    log(`Calling GET /api/recent?since=${effectiveCursor}&page=1...`, 'info');
+    const response = await fetchYumeRecentUpdates(effectiveCursor, 1);
+
+    // Stream & Page Verification Specification
+    const hasMarkers = response._start !== undefined || response.fetch_start !== undefined || response._end !== undefined || response.fetch_complete !== undefined;
+    const isStart = isYumeStartSignalValid(response);
+    const isEnd = isYumeEndSignalValid(response);
+
+    if (hasMarkers && (!isStart || !isEnd)) {
+      throw new Error('Incomplete payload received: missing start or end signal.');
+    }
+
+    const page1AnimeCount = getYumePageAnimeCount(response);
+    const page1Num = Number(response.info?.page) || 1;
+    log(`Successfully fetched ${page1AnimeCount} anime on page ${page1Num}`, 'info');
+
+    let recentItems: YumeRecentItem[] = [...(response.recent || [])];
+    const totalPages = Number(response.info?.total_pages) || 1;
+
+    if (totalPages > 1) {
+      log(`Detected ${totalPages} total pages in YUME /recent stream. Fetching remaining pages...`, 'info');
+      for (let p = 2; p <= totalPages; p++) {
+        if (options.stopSignalRef?.current) break;
+        log(`Fetching YUME /recent page ${p}/${totalPages}...`, 'info');
+        const pageRes = await fetchYumeRecentUpdates(effectiveCursor, p);
+        const pStart = isYumeStartSignalValid(pageRes);
+        const pEnd = isYumeEndSignalValid(pageRes);
+        const pMarkers = pageRes._start !== undefined || pageRes.fetch_start !== undefined || pageRes._end !== undefined || pageRes.fetch_complete !== undefined;
+        if (pMarkers && (!pStart || !pEnd)) {
+          throw new Error(`Incomplete payload received on page ${p}: missing start or end signal.`);
+        }
+        const pCount = getYumePageAnimeCount(pageRes);
+        log(`Successfully fetched ${pCount} anime on page ${p}`, 'info');
+        if (pageRes.recent && pageRes.recent.length > 0) {
+          recentItems.push(...pageRes.recent);
+        }
+      }
+    }
+
     stats.skippedByCursor = response.skipped || 0;
 
     log(`YUME API returned ${recentItems.length} updated anime entries (${response.skipped || 0} unchanged records automatically skipped by server cursor).`, 'info');

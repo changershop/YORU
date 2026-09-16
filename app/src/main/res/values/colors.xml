@@ -1,0 +1,10 @@
+<resources>
+    <color name="yoru_bg">#030407</color>
+    <color name="yoru_surface">#0A0B10</color>
+    <color name="yoru_surface_elevated">#11131A</color>
+    <color name="yoru_accent_indigo">#4F46E5</color>
+    <color name="yoru_accent_violet">#7C3AED</color>
+    <color name="yoru_text">#F1F5F9</color>
+    <color name="yoru_text_muted">#8492A6</color>
+    <color name="yoru_border">#262933</color>
+</resources>

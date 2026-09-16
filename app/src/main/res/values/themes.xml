@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.RemixYORU" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/yoru_bg</item>
+        <item name="android:navigationBarColor">@color/yoru_bg</item>
+        <item name="android:windowBackground">@color/yoru_bg</item>
+    </style>
+</resources>

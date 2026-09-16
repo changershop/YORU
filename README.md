@@ -1,14 +1,41 @@
-# Deployment & Authentication Guide
+# Remix YORU - Premium Anime Streaming Platform (Android)
 
-If your Google Login works in the AI Studio preview but fails on your deployed site (e.g., Vercel, Netlify, Cloud Run) with a popup error, this is a Firebase security feature. 
+A modern Android anime streaming and community application built with **Kotlin** and **Jetpack Compose**, adhering strictly to Material Design 3 guidelines.
 
-You must whitelist your deployed domain:
-1. Go to the [Firebase Console](https://console.firebase.google.com/)
-2. Select your project (`serene-engine-qwjkk`)
-3. Go to **Authentication** > **Settings** > **Authorized domains**
-4. Click **Add domain** and enter your deployed site's URL (e.g., `your-app.vercel.app`)
+## Features
 
-Wait a few minutes for the changes to propagate, and login will work on your deployed site!
+- **Cinematic Hero Spotlight Carousel**: Dynamic high-resolution hero banners showcasing trending and featured anime with seamless slide transitions and quick actions.
+- **Continue Watching & Progress Sync**: Tracks local watch progress across anime episodes with persistent state.
+- **Rich Anime Discovery & Categorization**:
+  - Horizontal carousels for Trending Now and Recently Added simulcasts.
+  - Interactive Genre and Format filter chips.
+  - Comprehensive 2-column search and browse grid with instant filtering.
+- **Detailed Anime Hub (`AnimeDetailScreen`)**:
+  - High-resolution poster and backdrop presentation with dark vignette styling.
+  - Multi-season and episode list support with duration and thumbnail previews.
+  - One-tap Watchlist bookmarking and direct episode playback navigation.
+- **Streaming Player Experience (`WatchScreen`)**:
+  - Integrated 16:9 streaming video player interface with responsive controls.
+  - Multi-server switching (Sub, Dub, Multi-Stream, Cloud Stream).
+  - Previous and Next episode skip controls.
+  - Real-time in-stream discussion comment feed.
+- **Personal Watchlist (`WatchlistScreen`)**:
+  - Filter by status tabs: All, Watching, Plan to Watch, and Completed.
+  - Quick-action removal and instant resumption.
+- **Community Feed (`CommunityScreen`)**:
+  - Community discussions, theories, soundtrack shares, and episode debates.
+  - Post creation, like counters, and threaded comments.
+- **User Profile & Stats (`ProfileScreen`)**:
+  - VIP badges, unlocked achievements ("Night Owl", "Early Bird", "Marathon").
+  - Aggregate statistics for episodes watched, watchlist total, and posts created.
+  - Full watch history management.
 
-## Firebase Project Name
-Note: Your Firebase Project ID (`serene-engine-qwjkk`) is permanent. Google Cloud / Firebase does not allow renaming project IDs once they are created. If you absolutely need a different name, you must create a brand new Firebase project.
+## Tech Stack & Architecture
+
+- **Language**: Kotlin
+- **UI Framework**: Jetpack Compose with Material Design 3 (M3)
+- **Local Persistence**: Android Room Database (`YoruDatabase`, `WatchlistDao`, `WatchHistoryDao`)
+- **Navigation**: Navigation Compose with type-safe arguments
+- **Image Loading**: Coil Compose (`AsyncImage`)
+- **State Management**: Android Architecture Components (`ViewModel`, `StateFlow`)
+

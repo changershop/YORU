@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Search, User, LogIn, Home, Compass, Bookmark, Settings, X, Loader2, Filter, Shuffle } from 'lucide-react';
+import { Search, User, LogIn, Home, Compass, Bookmark, Settings, X, Loader2, Filter, Shuffle, Menu, LogOut, Sparkles, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { signInWithGoogle, logout, db } from '../lib/firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
@@ -10,6 +10,7 @@ import { Button } from './ui/Button';
 import { cn, is18PlusAnime } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { AuthModal } from './AuthModal';
+import { ConfirmationModal } from './ui/ConfirmationModal';
 
 export const Logo = ({ className }: { className?: string }) => (
   <div className={cn("flex items-center gap-3 group", className)}>
@@ -34,6 +35,12 @@ export const Navigation = () => {
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
   const [watchlistCount, setWatchlistCount] = useState(0);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   
   useEffect(() => {
@@ -126,12 +133,6 @@ export const Navigation = () => {
     return () => window.removeEventListener('open-auth-modal', handleOpenAuth);
   }, []);
 
-  const navLinks = [
-    { name: 'Home', path: '/home' },
-    { name: 'Recent', path: '/recent' },
-    { name: 'Browse', path: '/browse' },
-  ];
-
   const handleLogin = () => {
     setIsAuthModalOpen(true);
   };
@@ -157,7 +158,7 @@ export const Navigation = () => {
         <div className="w-full px-4 md:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             
-            <div className="flex items-center gap-12">
+            <div className="flex items-center gap-8">
               <Link to="/home">
                 <Logo />
               </Link>
@@ -298,9 +299,9 @@ export const Navigation = () => {
               </button>
             </div>
 
-            <div className="hidden md:flex items-center gap-8 relative">
+            <div className="hidden md:flex items-center gap-4 relative">
               {user ? (
-                <div className="flex items-center gap-8">
+                <div className="flex items-center gap-6">
                   <Link to="/watchlist" className="relative group p-2 hover:bg-white/5 rounded-full transition-colors flex items-center justify-center" title="Watchlist">
                     <Bookmark className={cn("w-5 h-5 transition-colors duration-300", location.pathname === '/watchlist' ? "text-yoru-accent" : "text-yoru-text-muted group-hover:text-white")} />
                     {watchlistCount > 0 && (
@@ -402,31 +403,24 @@ export const Navigation = () => {
                   <Link to="/home">
                     <Logo className="scale-75 origin-left" />
                   </Link>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setIsSearchOpen(true)} className="p-2 text-white/70 hover:text-white bg-white/5 backdrop-blur-md rounded-full border border-white/10">
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => setIsSearchOpen(true)} className="p-2 text-white/70 hover:text-white bg-white/5 backdrop-blur-md rounded-full border border-white/10" aria-label="Search">
                       <Search className="w-4 h-4" />
                     </button>
-                    <Link to="/watchlist" className="relative p-2 text-white/70 hover:text-white bg-white/5 rounded-full border border-white/10">
+                    <Link to="/watchlist" className="relative p-2 text-white/70 hover:text-white bg-white/5 rounded-full border border-white/10" aria-label="Watchlist">
                        <Bookmark className="w-4 h-4" />
                        {watchlistCount > 0 && (
                          <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-yoru-bg" />
                        )}
                     </Link>
-                    {user ? (
-                      <Link to="/profile" className="w-8 h-8 rounded-full overflow-hidden border-2 border-white/10 shrink-0">
-                         {profile?.photoURL || user.photoURL ? (
-                           <img src={(profile?.photoURL || user.photoURL) as string} className="w-full h-full object-cover" />
-                         ) : (
-                           <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                              <User className="w-4 h-4 text-white/70" />
-                           </div>
-                         )}
-                      </Link>
-                    ) : (
-                      <button onClick={handleLogin} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 shrink-0">
-                         <User className="w-4 h-4 text-white/70" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setIsMobileMenuOpen(true)}
+                      className="p-2 text-white/80 hover:text-white bg-white/5 rounded-full border border-white/10"
+                      aria-label="Open Navigation Menu"
+                      title="Menu"
+                    >
+                      <Menu className="w-4 h-4" />
+                    </button>
                   </div>
                 </>
               )}
@@ -536,6 +530,146 @@ export const Navigation = () => {
           })}
         </div>
       </div>
+
+      {/* Slide-out Mobile Menu Drawer */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 z-[150] md:hidden">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+              className="absolute top-0 right-0 bottom-0 w-[85%] max-w-xs bg-[#0c0e17] border-l border-white/10 p-6 flex flex-col justify-between shadow-2xl overflow-y-auto"
+            >
+              <div className="space-y-6">
+                <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                  <Logo className="scale-75 origin-left" />
+                  <button
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white bg-white/5 border border-white/5"
+                    aria-label="Close menu"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {user ? (
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/10">
+                    <div className="w-10 h-10 rounded-full overflow-hidden border border-white/10 shrink-0">
+                      {profile?.photoURL || user.photoURL ? (
+                        <img src={(profile?.photoURL || user.photoURL) as string} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-white/10 flex items-center justify-center">
+                          <User className="w-5 h-5 text-zinc-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs font-bold text-white truncate">{profile?.username || user.displayName || 'Anime Enthusiast'}</h4>
+                      <p className="text-[10px] text-yoru-text-muted truncate">{user.email}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      handleLogin();
+                    }}
+                    className="w-full gap-2 text-xs py-2.5 font-bold"
+                  >
+                    <LogIn className="w-4 h-4" /> Sign In / Join YORU
+                  </Button>
+                )}
+
+                <div className="space-y-1">
+                  <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Navigation</div>
+                  {[
+                    { name: 'Home', path: '/home', icon: Home },
+                    { name: 'Recent Episodes', path: '/recent', icon: Sparkles },
+                    { name: 'Browse Anime', path: '/browse', icon: Compass },
+                    { name: 'Community Discussions', path: '/community', icon: Shield },
+                    { name: 'My Watchlist', path: '/watchlist', icon: Bookmark, badge: watchlistCount },
+                    ...(profile?.role === 'admin' ? [{ name: 'Admin Dashboard', path: '/admin', icon: Settings }] : []),
+                    ...(user ? [{ name: 'My Profile & History', path: '/profile', icon: User }] : []),
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location.pathname === item.path;
+                    return (
+                      <Link
+                        key={item.name}
+                        to={item.path}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition",
+                          isActive
+                            ? "bg-white/10 text-white font-semibold"
+                            : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Icon className="w-4 h-4 text-indigo-400" />
+                          <span>{item.name}</span>
+                        </div>
+                        {item.badge !== undefined && item.badge > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-600 text-white">
+                            {item.badge}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {user && (
+                <div className="pt-4 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setIsLogoutConfirmOpen(true);
+                    }}
+                    className="flex items-center gap-2 text-xs text-rose-400 hover:text-rose-300 w-full px-3 py-2 rounded-xl hover:bg-rose-500/10 transition font-medium"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Reusable Confirmation Modal for Logout */}
+      <ConfirmationModal
+        isOpen={isLogoutConfirmOpen}
+        onClose={() => setIsLogoutConfirmOpen(false)}
+        onConfirm={async () => {
+          try {
+            await logout();
+            setIsLogoutConfirmOpen(false);
+            navigate('/home');
+          } catch (e) {
+            console.error(e);
+          }
+        }}
+        title="Sign Out from YORU"
+        message="Are you sure you want to sign out? Your watch progress and active stream sessions are safely synced."
+        confirmText="Sign Out"
+        variant="danger"
+      />
     </>
   );
 };

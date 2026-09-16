@@ -3,6 +3,9 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navigation } from './components/Navigation';
 import { Footer } from './components/Footer';
+import { BackToTop } from './components/BackToTop';
+import { SkipToContent } from './components/SkipToContent';
+import { useUtmTracking } from './hooks/useUtmTracking';
 import { Landing } from './pages/Landing';
 import { Home } from './pages/Home';
 import { AnimeDetail } from './pages/AnimeDetail';
@@ -32,10 +35,13 @@ import { NotFound } from './pages/NotFound';
 import ScrollToTop from './components/ScrollToTop';
 
 function AppLayout() {
+  useUtmTracking();
+
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen relative">
+      <SkipToContent targetId="main-content" />
       <Navigation />
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
         <Routes>
           <Route path="/home" element={<Home />} />
           <Route path="/recent" element={<RecentAnime />} />
@@ -60,6 +66,7 @@ function AppLayout() {
         </Routes>
       </main>
       <Footer />
+      <BackToTop />
     </div>
   );
 }

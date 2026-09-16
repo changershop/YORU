@@ -352,6 +352,17 @@ export const AnimeDetail = () => {
               <span className="block text-[10px] font-bold uppercase tracking-widest text-yoru-text-muted mb-1">Genres</span>
               <span className="text-sm font-medium text-white">{anime.genres?.join(', ') || '-'}</span>
             </div>
+            <div className="pt-2 border-t border-white/5">
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-yoru-text-muted mb-1">Last Updated</span>
+              <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                {anime.updatedAt 
+                  ? new Date(anime.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                  : anime.createdAt 
+                  ? new Date(anime.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                  : 'Catalog Synced Today'}
+              </span>
+            </div>
           </div>
         </div>
 

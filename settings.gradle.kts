@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Remix YORU"
+rootProject.name = "YORU"
 include(":app")

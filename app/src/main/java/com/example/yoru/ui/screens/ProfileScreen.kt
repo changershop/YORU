@@ -257,7 +257,7 @@ fun ProfileScreen(
                     Text(text = "App Information", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = YoruTextPrimary)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(text = "Platform", color = YoruTextMuted, fontSize = 12.sp)
-                        Text(text = "Remix YORU Android v1.0", color = YoruTextPrimary, fontSize = 12.sp)
+                        Text(text = "YORU Android v1.0", color = YoruTextPrimary, fontSize = 12.sp)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(text = "Streaming Protocol", color = YoruTextMuted, fontSize = 12.sp)
